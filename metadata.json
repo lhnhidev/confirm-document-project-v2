@@ -1,0 +1,8 @@
+{
+  "name": "Hệ thống Quản lý Minh chứng Giáo viên THPT",
+  "description": "Hệ thống quản lý và xác nhận minh chứng công tác dành cho giáo viên trường THPT",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

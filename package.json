@@ -1,0 +1,14 @@
+{
+  "name": "confirm-documents-app",
+  "private": true,
+  "workspaces": [
+    "apps/backend",
+    "apps/frontend/web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/frontend/web",
+    "dev:backend": "npm run dev --workspace=apps/backend",
+    "build": "npm run build --workspace=apps/frontend/web",
+    "lint": "npm run lint --workspace=apps/frontend/web"
+  }
+}

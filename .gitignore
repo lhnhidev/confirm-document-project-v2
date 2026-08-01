@@ -1,0 +1,155 @@
+# ==========================================
+# 1. DEPENDENCIES (Thư viện phụ thuộc)
+# ==========================================
+node_modules/
+.pnpm-store/
+.yarn/cache/
+.yarn/unplugged/
+.pnp.*
+
+# ==========================================
+# 2. ENVIRONMENT & SECRETS (Môi trường & Bảo mật)
+# ==========================================
+# KHÔNG BAO GIỜ push thông tin bảo mật lên Git
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+*.cert
+
+# ==========================================
+# 3. BUILD OUTPUTS (Thư mục Build của Web & Backend)
+# ==========================================
+/dist
+/build
+/out
+/.next/
+/.nuxt/
+.vuepress/dist
+.serverless/
+.fusebox/
+.dynamodb/
+
+# ==========================================
+# 4. NODE.JS & LOGS
+# ==========================================
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.pid
+*.seed
+*.pid.lock
+
+# ==========================================
+# 5. REACT NATIVE & EXPO
+# ==========================================
+# Expo
+.expo/
+dist/
+web-build/
+
+# Metro Bundler
+.metro-health-check*
+
+# iOS Build & Pods (Nếu có folder ios/)
+ios/Pods/
+ios/build/
+ios/DerivedData/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+*.xcworkspace
+!default.xcworkspace/contents.xcworkspacedata
+*.moved-aside
+*.app
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Android Build & Keys (Nếu có folder android/)
+android/app/build/
+android/build/
+android/.gradle/
+android/app/debug/
+android/app/release/
+*.keystore
+!debug.keystore
+*.jks
+*.aar
+
+# ==========================================
+# 6. IDE & EDITORS (Cấu hình công cụ code)
+# ==========================================
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# JetBrains (WebStorm, IntelliJ...)
+.idea/
+
+# Hệ điều hành (MacOS, Windows)
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ==========================================
+# 7. TESTING & COVERAGE
+# ==========================================
+/coverage
+/.nyc_output
+.react-router/
+
+# dependencies (bun install)
+node_modules
+
+# output
+out
+dist
+*.tgz
+
+# code coverage
+coverage
+*.lcov
+
+# logs
+logs
+_.log
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
+.DS_Store
