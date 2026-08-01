@@ -73,7 +73,7 @@ export async function loginWithBackend(
  */
 export async function verifySessionWithBackend(): Promise<User | null> {
   const token = getToken()
-  if (!token) return null
+  if (!token) {return null}
 
   try {
     const response = await fetch("/api/auth/me", {

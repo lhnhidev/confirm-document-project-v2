@@ -83,17 +83,17 @@ export async function getTeacherSummaryApi(params?: {
   const token = getToken()
   try {
     const query = new URLSearchParams()
-    if (params?.page) query.append("page", params.page.toString())
-    if (params?.limit) query.append("limit", params.limit.toString())
-    if (params?.search) query.append("search", params.search)
-    if (params?.status && params.status !== "all") query.append("status", params.status)
+    if (params?.page) {query.append("page", params.page.toString())}
+    if (params?.limit) {query.append("limit", params.limit.toString())}
+    if (params?.search) {query.append("search", params.search)}
+    if (params?.status && params.status !== "all") {query.append("status", params.status)}
 
     const response = await fetch(`/api/evidences/my-summary?${query.toString()}`, {
       headers: {
         Authorization: `Bearer ${token}`
       }
     })
-    if (!response.ok) return null
+    if (!response.ok) {return null}
     const data = await response.json()
     return data.success ? data : null
   } catch (err) {
@@ -118,17 +118,17 @@ export async function getTeacherEvidencesApi(params?: {
   const token = getToken()
   try {
     const query = new URLSearchParams()
-    if (params?.page) query.append("page", params.page.toString())
-    if (params?.limit) query.append("limit", params.limit.toString())
-    if (params?.search) query.append("search", params.search)
-    if (params?.status && params.status !== "all") query.append("status", params.status)
+    if (params?.page) {query.append("page", params.page.toString())}
+    if (params?.limit) {query.append("limit", params.limit.toString())}
+    if (params?.search) {query.append("search", params.search)}
+    if (params?.status && params.status !== "all") {query.append("status", params.status)}
 
     const response = await fetch(`/api/evidences/my-evidences?${query.toString()}`, {
       headers: {
         Authorization: `Bearer ${token}`
       }
     })
-    if (!response.ok) return null
+    if (!response.ok) {return null}
     const data = await response.json()
     return data.success ? data : null
   } catch (err) {
@@ -148,7 +148,7 @@ export async function getFieldsAndCriteria(): Promise<FieldItem[]> {
         Authorization: `Bearer ${token}`
       }
     })
-    if (!response.ok) return []
+    if (!response.ok) {return []}
     const data = await response.json()
     return data.success ? data.fields : []
   } catch (err) {
@@ -168,7 +168,7 @@ export async function getEvidenceStats(): Promise<StatsResponse | null> {
         Authorization: `Bearer ${token}`
       }
     })
-    if (!response.ok) return null
+    if (!response.ok) {return null}
     const data = await response.json()
     return data.success ? data : null
   } catch (err) {
@@ -188,7 +188,7 @@ export async function fetchEvidencesApi(): Promise<EvidenceItem[]> {
         Authorization: `Bearer ${token}`
       }
     })
-    if (!response.ok) return []
+    if (!response.ok) {return []}
     const data = await response.json()
     return data.success ? data.evidences : []
   } catch (err) {
@@ -213,7 +213,7 @@ export async function submitEvidenceApi(
       },
       body: JSON.stringify(evidenceData)
     })
-    if (!response.ok) return null
+    if (!response.ok) {return null}
     const data = await response.json()
     return data.success ? data.evidence : null
   } catch (err) {

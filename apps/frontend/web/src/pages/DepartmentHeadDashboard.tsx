@@ -36,7 +36,7 @@ import TeacherProgressStatsView from "../components/TeacherProgressStatsView"
 interface DepartmentHeadDashboardProps {
   currentUser: User
   evidences: EvidenceItem[]
-  onUpdateStatus: (id: string, status: EvidenceStatus, comment?: string) => void
+  onUpdateStatus: (_id: string, _status: EvidenceStatus, _comment?: string) => void
   onLogout: () => void
 }
 

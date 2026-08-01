@@ -36,7 +36,7 @@ import type { User } from "../types/auth"
 import { loginWithBackend } from "../services/authApi"
 
 interface LoginPageProps {
-  onLoginSuccess: (user: User) => void
+  onLoginSuccess: (_user: User) => void
 }
 
 export default function LoginPage({ onLoginSuccess }: LoginPageProps) {

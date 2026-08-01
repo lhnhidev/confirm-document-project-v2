@@ -43,12 +43,106 @@ import type { User, EvidenceItem, EvidenceStatus } from "../types/auth"
 import { EvidenceStatus as EvidenceStatusValues } from "../types/auth"
 import AppHeader from "../components/AppHeader"
 import CriteriaMatrixTable from "../components/CriteriaMatrixTable"
-import { getTeacherSummaryApi, type TeacherSummaryData, type PaginationInfo } from "../services/evidenceApi"
+import { getTeacherSummaryApi, getFieldsAndCriteria, type TeacherSummaryData, type PaginationInfo, type FieldItem } from "../services/evidenceApi"
+
+const FRONTEND_FALLBACK_FIELDS: FieldItem[] = [
+  {
+    fieldCode: "I",
+    fieldName: "NĂNG LỰC SỬ DỤNG CÔNG NGHỆ SỐ",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC101", criteriaName: "Vận hành thiết bị số phục vụ công việc chuyên môn" },
+      { criteriaId: "TC102", criteriaName: "Quản lý dữ liệu và tài nguyên số phục vụ giảng dạy" },
+      { criteriaId: "TC103", criteriaName: "Thực hiện giao tiếp số trong công việc" },
+      { criteriaId: "TC104", criteriaName: "Sử dụng nền tảng trực tuyến(zoom, google meet,Microsoft Teams..)" },
+      { criteriaId: "TC105", criteriaName: "Tìm kiếm và khai thác thông tin số" }
+    ]
+  },
+  {
+    fieldCode: "II",
+    fieldName: "THIẾT KẾ HỌC LIỆU SỐ",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC201", criteriaName: "Thiết kế học liệu số" },
+      { criteriaId: "TC202", criteriaName: "Thiết kế bài trình chiếu số" },
+      { criteriaId: "TC203", criteriaName: "Thiết kế video bài giảng số" },
+      { criteriaId: "TC204", criteriaName: "Thiết kế học liệu số tương tác" },
+      { criteriaId: "TC205", criteriaName: "Quản lý học liệu số" }
+    ]
+  },
+  {
+    fieldCode: "III",
+    fieldName: "TỔ CHỨC DẠY HỌC SỐ",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC301", criteriaName: "Sử dụng nền tảng số trong tổ chức dạy học" },
+      { criteriaId: "TC302", criteriaName: "Giao và thu nhận nhiệm vụ học tập trực tuyến" },
+      { criteriaId: "TC303", criteriaName: "Quản lý lớp học trên môi trường số" },
+      { criteriaId: "TC304", criteriaName: "Theo dõi và hỗ trợ tiến độ học tập" },
+      { criteriaId: "TC305", criteriaName: "Tương tác và trao đổi với người học trên môi trường số" }
+    ]
+  },
+  {
+    fieldCode: "IV",
+    fieldName: "KIỂM TRA, ĐÁNH GIÁ",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC401", criteriaName: "Tổ chức kiểm tra, đánh giá trên môi trường số" },
+      { criteriaId: "TC402", criteriaName: "Xây dựng và quản lý ngân hàng câu hỏi số" },
+      { criteriaId: "TC403", criteriaName: "Phân tích kết quả đánh giá bằng công cụ số" },
+      { criteriaId: "TC404", criteriaName: "Phản hồi kết quả học tập trên môi trường số" },
+      { criteriaId: "TC405", criteriaName: "Quản lý và lưu trữ kết quả đánh giá số" }
+    ]
+  },
+  {
+    fieldCode: "V",
+    fieldName: "ỨNG DỤNG AI",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC501", criteriaName: "AI hỗ trợ soạn bài" },
+      { criteriaId: "TC502", criteriaName: "AI tạo câu hỏi" },
+      { criteriaId: "TC503", criteriaName: "AI tạo học liệu" },
+      { criteriaId: "TC504", criteriaName: "Ứng dụng AI trong phân tích dữ liệu giáo dục" },
+      { criteriaId: "TC505", criteriaName: "Sử dụng AI có trách nhiệm và đạo đức" }
+    ]
+  },
+  {
+    fieldCode: "VI",
+    fieldName: "AN TOÀN, BẢO MẬT VÀ ĐẠO ĐỨC SỐ",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC601", criteriaName: "Bảo vệ tài khoản" },
+      { criteriaId: "TC602", criteriaName: "Bảo vệ dữ liệu" },
+      { criteriaId: "TC603", criteriaName: "Bản quyền số" },
+      { criteriaId: "TC604", criteriaName: "Ứng xử số" }
+    ]
+  },
+  {
+    fieldCode: "VII",
+    fieldName: "CHIA SẺ, PHÁT TRIỂN CHUYÊN MÔN",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC701", criteriaName: "Chia sẻ học liệu số và kinh nghiệm chuyên môn" },
+      { criteriaId: "TC702", criteriaName: "Hỗ trợ đồng nghiệp" },
+      { criteriaId: "TC703", criteriaName: "Tham gia tập huấn" },
+      { criteriaId: "TC704", criteriaName: "Cộng đồng học tập" }
+    ]
+  },
+  {
+    fieldCode: "VIII",
+    fieldName: "ĐỔI MỚI SÁNG TẠO",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC801", criteriaName: "Sáng kiến/chuyển đổi số" },
+      { criteriaId: "TC802", criteriaName: "Tham gia dự án số" }
+    ]
+  }
+]
 
 interface TeacherDashboardProps {
   currentUser: User
   evidences: EvidenceItem[]
-  onAddEvidence: (newEvidence: Omit<EvidenceItem, "id" | "evidenceId" | "submittedBy">) => void
+  onAddEvidence: (_newEvidence: Omit<EvidenceItem, "id" | "evidenceId" | "submittedBy">) => void
   onLogout: () => void
 }
 
@@ -77,12 +171,25 @@ export default function TeacherDashboard({
   })
 
   // Form states for adding new evidence
+  const [fields, setFields] = useState<FieldItem[]>(FRONTEND_FALLBACK_FIELDS)
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [standardName, setStandardName] = useState("Tiêu chuẩn 2: Phát triển chuyên môn, nghiệp vụ")
-  const [criteriaName, setCriteriaName] = useState("Tiêu chí 4: Phát triển chuyên môn bản thân")
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [standardName, setStandardName] = useState("NĂNG LỰC SỬ DỤNG CÔNG NGHỆ SỐ")
+  const [criteriaName, setCriteriaName] = useState("Vận hành thiết bị số phục vụ công việc chuyên môn")
+  const [selectedFiles, setSelectedFiles] = useState<File[] | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
 
+  useEffect(() => {
+    getFieldsAndCriteria().then((res) => {
+      if (res && res.length > 0) {
+        setFields(res)
+        setStandardName(res[0].fieldName)
+        if (res[0].criteria && res[0].criteria.length > 0) {
+          setCriteriaName(res[0].criteria[0].criteriaName)
+        }
+      }
+    })
+  }, [])
   const loadSummaryData = useCallback(async (targetPage = currentPage, targetSearch = searchQuery, targetStatus = statusFilter) => {
     setLoadingApi(true)
     const res = await getTeacherSummaryApi({
@@ -125,7 +232,6 @@ export default function TeacherDashboard({
     }
   }, [currentPage, pageSize, searchQuery, statusFilter, evidences])
 
-  // Handle filter changes (reset to page 1)
   const handleSearchChange = (val: string) => {
     setSearchQuery(val)
     setCurrentPage(1)
@@ -136,7 +242,6 @@ export default function TeacherDashboard({
     setCurrentPage(1)
   }
 
-  // Local fallback calculation if API hasn't loaded
   const fallbackTeacherEvidences = evidences.filter(
     (e) => e.submittedBy.userId === currentUser.userId || e.submittedBy.email === currentUser.email
   )
@@ -154,7 +259,6 @@ export default function TeacherDashboard({
     return matchesSearch && matchesStatus
   })
 
-  // Display evidences array for current page
   const displayEvidences = apiEvidences.length > 0
     ? apiEvidences
     : fallbackFiltered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
@@ -162,7 +266,6 @@ export default function TeacherDashboard({
   const totalItemCount = paginationInfo.total > 0 ? paginationInfo.total : fallbackFiltered.length
   const totalPageCount = paginationInfo.totalPages > 0 ? paginationInfo.totalPages : Math.ceil(fallbackFiltered.length / pageSize) || 1
 
-  // Dynamic statistics from API
   const totalCount = apiSummary ? apiSummary.totalSubmitted : fallbackTeacherEvidences.length
   const approvedCount = apiSummary ? apiSummary.approvedCount : fallbackTeacherEvidences.filter((e) => e.currentStatus === EvidenceStatusValues.APPROVED).length
   const pendingCount = apiSummary ? apiSummary.pendingCount : fallbackTeacherEvidences.filter((e) => e.currentStatus === EvidenceStatusValues.PENDING).length
@@ -170,19 +273,75 @@ export default function TeacherDashboard({
   const completionPercentage = apiSummary ? apiSummary.completionPercentage : Math.round((approvedCount / totalCriteriaCount) * 100)
   const completedCriteriaCount = apiSummary ? apiSummary.completedCriteriaCount : approvedCount
 
-  const handleFormSubmit = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!title || !selectedFile) {
+  const standardOptions = fields.map((f) => ({
+    value: f.fieldName,
+    label: `Tiêu chuẩn ${f.fieldCode}: ${f.fieldName}`
+  }))
+
+  const selectedFieldObj = fields.find((f) => f.fieldName === standardName) || fields[0]
+  const criteriaOptions = selectedFieldObj
+    ? selectedFieldObj.criteria.map((c) => ({
+      value: c.criteriaName,
+      label: `${c.criteriaId}: ${c.criteriaName}`
+    }))
+    : []
+
+  const handleFileChange = (files: File[] | File | null) => {
+    setFileError(null)
+    const fileList = Array.isArray(files) ? files : files ? [files] : []
+    if (fileList.length === 0) {
+      setSelectedFiles(null)
       return
     }
+
+    const allowedTypes = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/msword",
+      "text/plain",
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "image/webp"
+    ]
+
+    for (const f of fileList) {
+      const ext = f.name.split(".").pop()?.toLowerCase()
+      const isAllowedExt = ["pdf", "doc", "docx", "txt", "jpg", "jpeg", "png", "gif", "webp"].includes(ext || "")
+      if (!allowedTypes.includes(f.type) && !isAllowedExt) {
+        setFileError(`Tệp "${f.name}" không đúng định dạng cho phép (PDF, DOCX, JPG, PNG, TXT).`)
+        return
+      }
+    }
+
+    const totalSize = fileList.reduce((acc, f) => acc + f.size, 0)
+    const maxBytes = 5 * 1024 * 1024 // 5MB
+    if (totalSize > maxBytes) {
+      setFileError(`Tổng kích thước các tệp (${(totalSize / (1024 * 1024)).toFixed(2)}MB) vượt quá giới hạn 5MB.`)
+      return
+    }
+
+    setSelectedFiles(fileList)
+  }
+
+  const handleFormSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!title || !selectedFiles || selectedFiles.length === 0 || fileError) {
+      return
+    }
+
+    const originalFileName = selectedFiles.map((f) => f.name).join(", ")
+    const totalFileSize = selectedFiles.reduce((acc, f) => acc + f.size, 0)
+    const fileFormat = selectedFiles[0].type || "application/pdf"
 
     await onAddEvidence({
       title,
       description,
       date: new Date().toISOString().split("T")[0],
-      originalFileName: selectedFile.name,
-      fileFormat: selectedFile.type || "application/pdf",
-      fileSize: selectedFile.size,
+      originalFileName,
+      fileFormat,
+      fileSize: totalFileSize,
       urlFile: "#",
       currentStatus: EvidenceStatusValues.PENDING,
       standardName,
@@ -192,7 +351,8 @@ export default function TeacherDashboard({
     // Reset form and reload API stats (reset page to 1 to show newly submitted evidence)
     setTitle("")
     setDescription("")
-    setSelectedFile(null)
+    setSelectedFiles(null)
+    setFileError(null)
     setModalOpened(false)
     setCurrentPage(1)
     await loadSummaryData(1, searchQuery, statusFilter)
@@ -200,14 +360,14 @@ export default function TeacherDashboard({
 
   const getStatusBadge = (status: EvidenceStatus) => {
     switch (status) {
-      case EvidenceStatusValues.APPROVED:
-        return <Badge color="emerald" leftSection={<IconCheck size={12} />}>Đã duyệt</Badge>
-      case EvidenceStatusValues.PENDING:
-        return <Badge color="amber" leftSection={<IconClock size={12} />}>Chờ thẩm định</Badge>
-      case EvidenceStatusValues.NEEDS_SUPPLEMENT:
-        return <Badge color="red" leftSection={<IconAlertTriangle size={12} />}>Cần bổ sung</Badge>
-      default:
-        return <Badge color="gray">{status}</Badge>
+    case EvidenceStatusValues.APPROVED:
+      return <Badge color="emerald" leftSection={<IconCheck size={12} />}>Đã duyệt</Badge>
+    case EvidenceStatusValues.PENDING:
+      return <Badge color="amber" leftSection={<IconClock size={12} />}>Chờ thẩm định</Badge>
+    case EvidenceStatusValues.NEEDS_SUPPLEMENT:
+      return <Badge color="red" leftSection={<IconAlertTriangle size={12} />}>Cần bổ sung</Badge>
+    default:
+      return <Badge color="gray">{status}</Badge>
     }
   }
 
@@ -526,39 +686,37 @@ export default function TeacherDashboard({
 
           <Select
             label="Thuộc Tiêu chuẩn"
-            data={[
-              "Tiêu chuẩn 1: Phẩm chất nhà giáo",
-              "Tiêu chuẩn 2: Phát triển chuyên môn, nghiệp vụ",
-              "Tiêu chuẩn 3: Xây dựng môi trường giáo dục",
-              "Tiêu chuẩn 4: Phát triển mối quan hệ giữa nhà trường, gia đình và xã hội"
-            ]}
+            data={standardOptions}
             value={standardName}
-            onChange={(val) => setStandardName(val || "")}
+            onChange={(val) => {
+              if (val) {
+                setStandardName(val)
+                const fObj = fields.find((f) => f.fieldName === val)
+                if (fObj && fObj.criteria.length > 0) {
+                  setCriteriaName(fObj.criteria[0].criteriaName)
+                }
+              }
+            }}
           />
 
           <Select
             label="Thuộc Tiêu chí cụ thể"
-            data={[
-              "Tiêu chí 1: Đạo đức nhà giáo",
-              "Tiêu chí 2: Phong cách làm việc",
-              "Tiêu chí 3: Tự học và phát triển",
-              "Tiêu chí 4: Phát triển chuyên môn bản thân",
-              "Tiêu chí 5: Xây dựng kế hoạch dạy học và giáo dục",
-              "Tiêu chí 6: Sử dụng phương pháp dạy học",
-              "Tiêu chí 12: Phối hợp giữa nhà trường, gia đình, xã hội"
-            ]}
+            data={criteriaOptions}
             value={criteriaName}
             onChange={(val) => setCriteriaName(val || "")}
           />
 
           <FileInput
-            label="Tệp minh chứng đính kèm (PDF, DOCX, JPG)"
-            placeholder="Chọn tệp minh chứng từ máy tính..."
+            label="Tệp minh chứng đính kèm (PDF, DOCX, JPG, PNG, TXT)"
+            placeholder="Chọn một hoặc nhiều tệp minh chứng (tổng <= 5MB)..."
             required
+            multiple
+            clearable
             leftSection={<IconFileUpload size={16} />}
-            value={selectedFile}
-            onChange={setSelectedFile}
-            accept="application/pdf,image/*,.doc,.docx"
+            value={selectedFiles || undefined}
+            onChange={handleFileChange}
+            accept=".pdf,.doc,.docx,.txt,image/*"
+            error={fileError}
           />
 
           <Textarea

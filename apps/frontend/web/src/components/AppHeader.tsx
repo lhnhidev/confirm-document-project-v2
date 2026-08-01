@@ -12,26 +12,26 @@ interface AppHeaderProps {
 export default function AppHeader({ currentUser, onLogout }: AppHeaderProps) {
   const getRoleBadge = (role: UserRole) => {
     switch (role) {
-      case UserRoleValues.TEACHER:
-        return {
-          label: "Giáo viên THPT",
-          color: "blue"
-        }
-      case UserRoleValues.DEPARTMENT_HEAD:
-        return {
-          label: "Tổ trưởng Chuyên môn",
-          color: "emerald"
-        }
-      case UserRoleValues.SCHOOL_BOARD:
-        return {
-          label: "Ban Giám Hiệu",
-          color: "amber"
-        }
-      default:
-        return {
-          label: role,
-          color: "gray"
-        }
+    case UserRoleValues.TEACHER:
+      return {
+        label: "Giáo viên THPT",
+        color: "blue"
+      }
+    case UserRoleValues.DEPARTMENT_HEAD:
+      return {
+        label: "Tổ trưởng Chuyên môn",
+        color: "emerald"
+      }
+    case UserRoleValues.SCHOOL_BOARD:
+      return {
+        label: "Ban Giám Hiệu",
+        color: "amber"
+      }
+    default:
+      return {
+        label: role,
+        color: "gray"
+      }
     }
   }
 
