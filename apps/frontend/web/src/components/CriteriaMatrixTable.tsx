@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Fragment } from "react"
 import { Table, Paper, Title, Text, Button, Loader } from "@mantine/core"
 import { IconSparkles, IconRefresh } from "@tabler/icons-react"
 import { getFieldsAndCriteria, type FieldItem } from "../services/evidenceApi"
@@ -128,7 +128,7 @@ export default function CriteriaMatrixTable({ evidences }: CriteriaMatrixTablePr
                 const fieldPercent = fieldTotalCriteria > 0 ? Math.round((fieldCompletedCount / fieldTotalCriteria) * 100) : 0
 
                 return (
-                  <div key={field.fieldCode} style={{ display: "contents" }}>
+                  <Fragment key={field.fieldCode}>
                     {/* Field Row */}
                     <Table.Tr className="bg-blue-100/80 font-extrabold text-blue-950 text-sm border-t-2 border-blue-200">
                       <Table.Td className="text-center font-extrabold text-blue-900">{field.fieldCode}</Table.Td>
@@ -209,7 +209,7 @@ export default function CriteriaMatrixTable({ evidences }: CriteriaMatrixTablePr
                         </div>
                       </Table.Td>
                     </Table.Tr>
-                  </div>
+                  </Fragment>
                 )
               })}
             </Table.Tbody>

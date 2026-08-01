@@ -61,6 +61,31 @@ async function getUserFieldsHandler(req: AuthRequest, res: Response) {
         dbUser.fields = createdIds;
         await dbUser.save();
       }
+    } else {
+      dbUser = await User.create({
+        userId: user.userId,
+        fullName: user.fullName,
+        email: user.email.toLowerCase(),
+        role: user.role,
+        departmentName: user.departmentName || "Tổng hợp",
+        major: user.major || "",
+        phoneNumber: user.phoneNumber || ""
+      });
+
+      const createdIds: Types.ObjectId[] = [];
+      for (const template of FALLBACK_FIELDS) {
+        const newField = await Field.create({
+          fieldCode: template.fieldCode,
+          fieldName: template.fieldName,
+          percent: template.percent,
+          criteria: template.criteria,
+          user: dbUser._id
+        });
+        createdIds.push(newField._id as Types.ObjectId);
+        fields.push(newField);
+      }
+      dbUser.fields = createdIds;
+      await dbUser.save();
     }
 
     // Fallback nếu trong DB hoàn toàn chưa có user
