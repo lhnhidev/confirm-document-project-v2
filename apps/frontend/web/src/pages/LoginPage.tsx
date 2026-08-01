@@ -26,13 +26,23 @@ import {
   IconHelpCircle,
   IconCertificate,
   IconSparkles,
-  IconArrowRight
+  IconArrowRight,
+  IconAlertCircle,
+  IconInfoCircle
 } from "@tabler/icons-react"
 import { appThemeTokens } from "../theme"
+import { SEED_USERS } from "../data/seedUsers"
+import type { User } from "../types/auth"
+import { loginWithBackend } from "../services/authApi"
 
-export default function LoginPage() {
+interface LoginPageProps {
+  onLoginSuccess: (user: User) => void
+}
+
+export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
   const [loading, setLoading] = useState<boolean>(false)
   const [loginSuccess, setLoginSuccess] = useState<boolean>(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [helpOpened, setHelpOpened] = useState<boolean>(false)
   const [forgotOpened, setForgotOpened] = useState<boolean>(false)
 
@@ -47,12 +57,12 @@ export default function LoginPage() {
       username: (value) => {
         const trimmed = value.trim()
         if (trimmed.length === 0) {
-          return "Vui lòng nhập email hoặc Mã cán bộ"
+          return "Vui lòng nhập email cán bộ"
         }
         if (trimmed.includes("@")) {
           const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
           if (!emailRegex.test(trimmed)) {
-            return "Email không đúng định dạng (VD: giaovien@baclieu.edu.vn)"
+            return "Email không đúng định dạng (VD: ttthuedtnt@gmail.com)"
           }
         }
         return null
@@ -62,17 +72,48 @@ export default function LoginPage() {
     }
   })
 
-  const handleSubmit = (values: typeof form.values) => {
+  const handleSubmit = async (values: typeof form.values) => {
     setLoading(true)
     setLoginSuccess(false)
-    
-    // Giả lập xử lý đăng nhập hệ thống minh chứng
-    setTimeout(() => {
-      if (values.username) {
-        setLoading(false)
+    setErrorMessage(null)
+
+    const inputEmail = values.username.trim().toLowerCase()
+    const inputPassword = values.password.trim()
+
+    // 1. Thực hiện gọi API đăng nhập tới Express Backend (/api/auth/login)
+    const result = await loginWithBackend(inputEmail, inputPassword)
+
+    if (result.success && result.user) {
+      setLoading(false)
+      setLoginSuccess(true)
+      setTimeout(() => {
+        onLoginSuccess(result.user!)
+      }, 500)
+    } else {
+      // 2. Nếu API Backend không khả dụng hoặc trả về lỗi, fallback kiểm tra seed data
+      const matchedUser = SEED_USERS.find(
+        (u) => u.email.toLowerCase() === inputEmail && u.password === inputPassword
+      )
+
+      setLoading(false)
+      if (matchedUser) {
         setLoginSuccess(true)
+        setTimeout(() => {
+          onLoginSuccess(matchedUser)
+        }, 500)
+      } else {
+        setErrorMessage(
+          result.message ||
+            "Email hoặc mật khẩu không chính xác! Vui lòng kiểm tra lại."
+        )
       }
-    }, 1200)
+    }
+  }
+
+  const fillQuickAccount = (email: string) => {
+    form.setFieldValue("username", email)
+    form.setFieldValue("password", "123")
+    setErrorMessage(null)
   }
 
   return (
@@ -136,7 +177,7 @@ export default function LoginPage() {
                 className="h-48 w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/30 to-transparent" />
-              
+
               <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-xs text-white">
                 <div className="flex items-center space-x-1.5 bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10">
                   <IconCertificate size={15} className="text-emerald-400" />
@@ -144,7 +185,7 @@ export default function LoginPage() {
                 </div>
                 <div className="flex items-center space-x-1 bg-emerald-500/80 px-2.5 py-1 rounded-lg text-[11px] font-bold">
                   <IconCheck size={13} />
-                  <span>Chữ ký số BĐD</span>
+                  <span>Xác thực Chữ ký số</span>
                 </div>
               </div>
             </div>
@@ -182,7 +223,7 @@ export default function LoginPage() {
                   <Badge variant="light" color="blue" size="md">
                     Cổng Đăng Nhập Chính Thức
                   </Badge>
-                  
+
                   <Tooltip label="Xem hướng dẫn sử dụng" position="left">
                     <Button
                       variant="subtle"
@@ -201,28 +242,40 @@ export default function LoginPage() {
                   Đăng Nhập Hệ Thống
                 </Title>
                 <Text size="sm" c="dimmed" className="mt-1">
-                  Vui lòng nhập tài khoản được cấp để truy cập hệ thống.
+                  Nhập email cán bộ và mật khẩu của bạn để vào trang quản lý tương ứng.
                 </Text>
               </div>
 
-              {/* Login Alert Notice */}
+              {/* Login Alerts */}
+              {errorMessage && (
+                <Alert
+                  icon={<IconAlertCircle size={18} />}
+                  title="Đăng nhập không thành công"
+                  color="red"
+                  radius="md"
+                  className="mb-4 border border-red-200"
+                >
+                  {errorMessage}
+                </Alert>
+              )}
+
               {loginSuccess && (
                 <Alert
                   icon={<IconCheck size={18} />}
-                  title="Đăng nhập thành công!"
+                  title="Xác thực thành công!"
                   color="emerald"
                   radius="md"
-                  className="mb-5 border border-emerald-200"
+                  className="mb-4 border border-emerald-200"
                 >
-                  Đang chuyển hướng đến bảng điều khiển minh chứng...
+                  Đang chuyển hướng đến Bảng điều khiển...
                 </Alert>
               )}
 
               {/* Login Form */}
               <form onSubmit={form.onSubmit(handleSubmit)} className="space-y-4">
                 <TextInput
-                  label="Email hoặc Mã cán bộ"
-                  placeholder="giaovien@baclieu.edu.vn hoặc CB-2026"
+                  label="Email cán bộ"
+                  placeholder="Ví dụ: ttthuedtnt@gmail.com"
                   leftSection={<IconUser size={18} stroke={1.5} className="text-slate-400" />}
                   radius="md"
                   size="md"
@@ -270,6 +323,52 @@ export default function LoginPage() {
                   {loading ? "Đang xác thực..." : "Đăng Nhập Vào Hệ Thống"}
                 </Button>
               </form>
+
+              {/* Quick Helper for Seed Users */}
+              <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/90 p-3.5 space-y-2">
+                <div className="flex items-center space-x-1.5 text-xs font-semibold text-slate-700">
+                  <IconInfoCircle size={15} className="text-blue-600" />
+                  <span>Tài khoản mẫu từ seed.ts (Mật khẩu: 123):</span>
+                </div>
+
+                <div className="flex flex-col gap-1.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => fillQuickAccount("ttthuedtnt@gmail.com")}
+                    className="flex items-center justify-between rounded-lg bg-white p-2 border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 transition-colors text-left"
+                  >
+                    <div>
+                      <span className="font-bold text-slate-900">Tống Thị Tuyết Huệ</span>
+                      <span className="text-slate-500 block text-[11px]">ttthuedtnt@gmail.com</span>
+                    </div>
+                    <Badge color="blue" size="xs">Giáo viên</Badge>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => fillQuickAccount("lethingochon.dtnt@gmail.com")}
+                    className="flex items-center justify-between rounded-lg bg-white p-2 border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50 transition-colors text-left"
+                  >
+                    <div>
+                      <span className="font-bold text-slate-900">Lê Thị Ngọc Hơn</span>
+                      <span className="text-slate-500 block text-[11px]">lethingochon.dtnt@gmail.com</span>
+                    </div>
+                    <Badge color="emerald" size="xs">Tổ trưởng chuyên môn</Badge>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => fillQuickAccount("ncnhuu83@gmail.com")}
+                    className="flex items-center justify-between rounded-lg bg-white p-2 border border-slate-200 hover:border-amber-400 hover:bg-amber-50/50 transition-colors text-left"
+                  >
+                    <div>
+                      <span className="font-bold text-slate-900">Nguyễn Chơn Nhất Hữu</span>
+                      <span className="text-slate-500 block text-[11px]">ncnhuu83@gmail.com</span>
+                    </div>
+                    <Badge color="amber" size="xs">Ban Giám Hiệu</Badge>
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Footer Notice */}
@@ -281,7 +380,7 @@ export default function LoginPage() {
         </Paper>
       </div>
 
-      {/* Modal: Hướng Dẫn Nộp Minh Chứng */}
+      {/* Modal: Hướng Dẫn */}
       <Modal
         opened={helpOpened}
         onClose={() => setHelpOpened(false)}
@@ -307,7 +406,7 @@ export default function LoginPage() {
               </div>
               <div>
                 <p className="font-semibold text-slate-900">Tài khoản đăng nhập</p>
-                <p className="text-xs text-slate-500">Sử dụng Email công vụ (@baclieu.edu.vn) hoặc Mã số Cán bộ do Ban Giám Hiệu cấp.</p>
+                <p className="text-xs text-slate-500">Sử dụng Email công vụ trong dữ liệu seed.ts của nhà trường.</p>
               </div>
             </div>
 
@@ -318,16 +417,6 @@ export default function LoginPage() {
               <div>
                 <p className="font-semibold text-slate-900">Quy cách minh chứng</p>
                 <p className="text-xs text-slate-500">Định dạng chấp nhận: PDF, PNG, JPG (Dung lượng tối đa 25MB/mục minh chứng).</p>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-100 font-bold text-blue-900 text-xs">
-                3
-              </div>
-              <div>
-                <p className="font-semibold text-slate-900">Hỗ trợ kỹ thuật</p>
-                <p className="text-xs text-slate-500">Liên hệ Tổ Công nghệ Thông tin nhà trường: hotline 0291.382xxxx (Giờ hành chính).</p>
               </div>
             </div>
           </div>

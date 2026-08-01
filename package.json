@@ -6,9 +6,17 @@
     "apps/frontend/web"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace=apps/frontend/web",
+    "dev": "concurrently -k -p \"[{name}]\" -n \"BACKEND,FRONTEND\" -c \"magenta,cyan\" \"npm run dev --workspace=apps/backend\" \"npm run dev --workspace=apps/frontend/web\"",
     "dev:backend": "npm run dev --workspace=apps/backend",
+    "dev:frontend": "npm run dev --workspace=apps/frontend/web",
     "build": "npm run build --workspace=apps/frontend/web",
     "lint": "npm run lint --workspace=apps/frontend/web"
+  },
+  "dependencies": {
+    "concurrently": "^10.0.4",
+    "jsonwebtoken": "^9.0.3"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10"
   }
 }

@@ -1,4 +1,4 @@
-import { Schema, model, Document } from "mongoose";
+import { Schema, model, Document, Types } from "mongoose";
 
 export enum UserRole {
   TEACHER = "Teacher",
@@ -15,6 +15,8 @@ export interface IUser extends Document {
   phoneNumber?: string;
   departmentName?: string;
   password: string;
+  fields?: Types.ObjectId[]; // Ref -> Field (Quan hệ 1 - 8 với Field theo cdm.pu)
+  evidences?: Types.ObjectId[]; // Ref -> Evidence (Quan hệ 1 - n với Evidence)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -44,6 +46,8 @@ const userSchema = new Schema<IUser>(
     phoneNumber: { type: String, trim: true },
     departmentName: { type: String, trim: true },
     password: { type: String, required: true, select: false }, // Hide password by default
+    fields: [{ type: Schema.Types.ObjectId, ref: "Field" }],
+    evidences: [{ type: Schema.Types.ObjectId, ref: "Evidence" }],
   },
   { timestamps: true },
 );
