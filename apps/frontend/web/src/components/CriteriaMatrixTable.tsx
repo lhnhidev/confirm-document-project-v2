@@ -5,18 +5,116 @@ import { getFieldsAndCriteria, type FieldItem } from "../services/evidenceApi"
 import { EvidenceStatus } from "../types/auth"
 import type { EvidenceItem } from "../types/auth"
 
+const FRONTEND_FALLBACK_FIELDS: FieldItem[] = [
+  {
+    fieldCode: "I",
+    fieldName: "NĂNG LỰC SỬ DỤNG CÔNG NGHỆ SỐ",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC101", criteriaName: "Vận hành thiết bị số phục vụ công việc chuyên môn" },
+      { criteriaId: "TC102", criteriaName: "Quản lý dữ liệu và tài nguyên số phục vụ giảng dạy" },
+      { criteriaId: "TC103", criteriaName: "Thực hiện giao tiếp số trong công việc" },
+      { criteriaId: "TC104", criteriaName: "Sử dụng nền tảng trực tuyến(zoom, google meet,Microsoft Teams..)" },
+      { criteriaId: "TC105", criteriaName: "Tìm kiếm và khai thác thông tin số" }
+    ]
+  },
+  {
+    fieldCode: "II",
+    fieldName: "THIẾT KẾ HỌC LIỆU SỐ",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC201", criteriaName: "Thiết kế học liệu số" },
+      { criteriaId: "TC202", criteriaName: "Thiết kế bài trình chiếu số" },
+      { criteriaId: "TC203", criteriaName: "Thiết kế video bài giảng số" },
+      { criteriaId: "TC204", criteriaName: "Thiết kế học liệu số tương tác" },
+      { criteriaId: "TC205", criteriaName: "Quản lý học liệu số" }
+    ]
+  },
+  {
+    fieldCode: "III",
+    fieldName: "TỔ CHỨC DẠY HỌC SỐ",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC301", criteriaName: "Sử dụng nền tảng số trong tổ chức dạy học" },
+      { criteriaId: "TC302", criteriaName: "Giao và thu nhận nhiệm vụ học tập trực tuyến" },
+      { criteriaId: "TC303", criteriaName: "Quản lý lớp học trên môi trường số" },
+      { criteriaId: "TC304", criteriaName: "Theo dõi và hỗ trợ tiến độ học tập" },
+      { criteriaId: "TC305", criteriaName: "Tương tác và trao đổi với người học trên môi trường số" }
+    ]
+  },
+  {
+    fieldCode: "IV",
+    fieldName: "KIỂM TRA, ĐÁNH GIÁ",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC401", criteriaName: "Tổ chức kiểm tra, đánh giá trên môi trường số" },
+      { criteriaId: "TC402", criteriaName: "Xây dựng và quản lý ngân hàng câu hỏi số" },
+      { criteriaId: "TC403", criteriaName: "Phân tích kết quả đánh giá bằng công cụ số" },
+      { criteriaId: "TC404", criteriaName: "Phản hồi kết quả học tập trên môi trường số" },
+      { criteriaId: "TC405", criteriaName: "Quản lý và lưu trữ kết quả đánh giá số" }
+    ]
+  },
+  {
+    fieldCode: "V",
+    fieldName: "ỨNG DỤNG AI",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC501", criteriaName: "AI hỗ trợ soạn bài" },
+      { criteriaId: "TC502", criteriaName: "AI tạo câu hỏi" },
+      { criteriaId: "TC503", criteriaName: "AI tạo học liệu" },
+      { criteriaId: "TC504", criteriaName: "Ứng dụng AI trong phân tích dữ liệu giáo dục" },
+      { criteriaId: "TC505", criteriaName: "Sử dụng AI có trách nhiệm và đạo đức" }
+    ]
+  },
+  {
+    fieldCode: "VI",
+    fieldName: "AN TOÀN, BẢO MẬT VÀ ĐẠO ĐỨC SỐ",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC601", criteriaName: "Bảo vệ tài khoản" },
+      { criteriaId: "TC602", criteriaName: "Bảo vệ dữ liệu" },
+      { criteriaId: "TC603", criteriaName: "Bản quyền số" },
+      { criteriaId: "TC604", criteriaName: "Ứng xử số" }
+    ]
+  },
+  {
+    fieldCode: "VII",
+    fieldName: "CHIA SẺ, PHÁT TRIỂN CHUYÊN MÔN",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC701", criteriaName: "Chia sẻ học liệu số và kinh nghiệm chuyên môn" },
+      { criteriaId: "TC702", criteriaName: "Hỗ trợ đồng nghiệp" },
+      { criteriaId: "TC703", criteriaName: "Tham gia tập huấn" },
+      { criteriaId: "TC704", criteriaName: "Cộng đồng học tập" }
+    ]
+  },
+  {
+    fieldCode: "VIII",
+    fieldName: "ĐỔI MỚI SÁNG TẠO",
+    percent: 0,
+    criteria: [
+      { criteriaId: "TC801", criteriaName: "Sáng kiến/chuyển đổi số" },
+      { criteriaId: "TC802", criteriaName: "Tham gia dự án số" }
+    ]
+  }
+]
+
 interface CriteriaMatrixTableProps {
   evidences: EvidenceItem[]
 }
 
 export default function CriteriaMatrixTable({ evidences }: CriteriaMatrixTableProps) {
-  const [fields, setFields] = useState<FieldItem[]>([])
+  const [fields, setFields] = useState<FieldItem[]>(FRONTEND_FALLBACK_FIELDS)
   const [loading, setLoading] = useState(true)
 
   const loadData = useCallback(async () => {
     setLoading(true)
     const fieldsData = await getFieldsAndCriteria()
-    setFields(fieldsData)
+    if (fieldsData && fieldsData.length > 0) {
+      setFields(fieldsData)
+    } else {
+      setFields(FRONTEND_FALLBACK_FIELDS)
+    }
     setLoading(false)
   }, [])
 
@@ -24,7 +122,11 @@ export default function CriteriaMatrixTable({ evidences }: CriteriaMatrixTablePr
     let isSubscribed = true
     getFieldsAndCriteria().then((fieldsData) => {
       if (isSubscribed) {
-        setFields(fieldsData)
+        if (fieldsData && fieldsData.length > 0) {
+          setFields(fieldsData)
+        } else {
+          setFields(FRONTEND_FALLBACK_FIELDS)
+        }
         setLoading(false)
       }
     })
@@ -152,44 +254,27 @@ export default function CriteriaMatrixTable({ evidences }: CriteriaMatrixTablePr
                             <span className="text-slate-800 font-medium">{c.criteriaName}</span>
                           </Table.Td>
 
-                          <Table.Td>
-                            <div className="flex items-center justify-around gap-1 text-[11px]">
-                              <label className={`inline-flex items-center space-x-1 cursor-default px-1.5 py-0.5 rounded transition-colors ${
-                                status === "not_started"
-                                  ? "font-bold text-slate-900 bg-slate-200/90 border border-slate-300"
-                                  : "text-slate-400"
-                              }`}>
-                                <input type="checkbox" checked={status === "not_started"} readOnly className="h-3 w-3 text-slate-600 rounded-sm" />
-                                <span>Chưa thực hiện</span>
-                              </label>
-
-                              <label className={`inline-flex items-center space-x-1 cursor-default px-1.5 py-0.5 rounded transition-colors ${
-                                status === "submitted"
-                                  ? "font-bold text-amber-900 bg-amber-100 border border-amber-300"
-                                  : "text-slate-400"
-                              }`}>
-                                <input type="checkbox" checked={status === "submitted"} readOnly className="h-3 w-3 text-amber-600 rounded-sm" />
-                                <span>Đã nộp</span>
-                              </label>
-
-                              <label className={`inline-flex items-center space-x-1 cursor-default px-1.5 py-0.5 rounded transition-colors ${
-                                status === "confirmed"
-                                  ? "font-bold text-blue-900 bg-blue-100 border border-blue-300"
-                                  : "text-slate-400"
-                              }`}>
-                                <input type="checkbox" checked={status === "confirmed"} readOnly className="h-3 w-3 text-blue-600 rounded-sm" />
-                                <span>Đã xác nhận</span>
-                              </label>
-
-                              <label className={`inline-flex items-center space-x-1 cursor-default px-1.5 py-0.5 rounded transition-colors ${
-                                status === "completed"
-                                  ? "font-bold text-emerald-900 bg-emerald-100 border border-emerald-300"
-                                  : "text-slate-400"
-                              }`}>
-                                <input type="checkbox" checked={status === "completed"} readOnly className="h-3 w-3 text-emerald-600 rounded-sm" />
-                                <span>Hoàn thành</span>
-                              </label>
-                            </div>
+                          <Table.Td className="text-center">
+                            {status === "not_started" && (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-300">
+                                Chưa thực hiện
+                              </span>
+                            )}
+                            {status === "submitted" && (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300">
+                                Đang chờ duyệt
+                              </span>
+                            )}
+                            {status === "confirmed" && (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-orange-50 text-orange-800 border border-orange-300">
+                                Cần bổ sung
+                              </span>
+                            )}
+                            {status === "completed" && (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300">
+                                Đã duyệt
+                              </span>
+                            )}
                           </Table.Td>
                         </Table.Tr>
                       )
