@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import { useState } from "react"
 import {
   Title,
@@ -25,7 +26,10 @@ import {
   IconBuildingSkyscraper,
   IconCertificate,
   IconTable,
-  IconChartPie
+  IconChartPie,
+  IconDownload,
+  IconExternalLink,
+  IconFileText
 } from "@tabler/icons-react"
 import type { User, EvidenceItem, EvidenceStatus } from "../types/auth"
 import { EvidenceStatus as EvidenceStatusValues } from "../types/auth"
@@ -50,6 +54,14 @@ export default function DepartmentHeadDashboard({
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceItem | null>(null)
   const [reviewComment, setReviewComment] = useState("")
+  const [showPreview, setShowPreview] = useState<boolean>(false)
+
+  const handleDownload = (url: string, filename: string) => {
+    if (!url || url === "#") {
+      return
+    }
+    window.location.href = `/api/evidences/download-proxy?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`
+  }
 
   // Pending and evaluated evidences
   const departmentEvidences = evidences.filter(
@@ -357,6 +369,7 @@ export default function DepartmentHeadDashboard({
                                 onClick={() => {
                                   setSelectedEvidence(item)
                                   setReviewComment(item.reviewComment || "")
+                                  setShowPreview(false)
                                 }}
                               >
                                 {item.currentStatus === EvidenceStatusValues.PENDING ? "Thẩm Định" : "Xem Lại"}
@@ -428,7 +441,10 @@ export default function DepartmentHeadDashboard({
       {selectedEvidence && (
         <Modal
           opened={!!selectedEvidence}
-          onClose={() => setSelectedEvidence(null)}
+          onClose={() => {
+            setSelectedEvidence(null)
+            setShowPreview(false)
+          }}
           title={
             <Group gap="xs">
               <IconCertificate size={20} className="text-blue-900" />
@@ -444,16 +460,120 @@ export default function DepartmentHeadDashboard({
               <p><strong>Giáo viên nộp:</strong> {selectedEvidence.submittedBy.fullName} ({selectedEvidence.submittedBy.email})</p>
               <p><strong>Tiêu chuẩn:</strong> {selectedEvidence.standardName}</p>
               <p><strong>Tiêu chí:</strong> {selectedEvidence.criteriaName}</p>
-              <p><strong>Tệp đính kèm:</strong> {selectedEvidence.originalFileName}</p>
             </div>
 
             <div>
               <Text size="xs" fw={600} className="mb-1 text-slate-800">
-                Tên / Mô tả minh chứng:
+                Tên minh chứng:
               </Text>
-              <Text size="sm" className="p-3 bg-white border border-slate-200 rounded-md">
+              <Text size="sm" className="p-3 bg-white border border-slate-200 rounded-md fw-semibold text-slate-900">
                 {selectedEvidence.title}
               </Text>
+            </div>
+
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <Text size="xs" c="dimmed">Tệp đính kèm:</Text>
+                <Badge variant="light" size="sm">{selectedEvidence.fileFormat ? selectedEvidence.fileFormat.toUpperCase() : "Không rõ"}</Badge>
+              </div>
+              <Text size="xs" fw={600} className="text-slate-800 truncate block">
+                {selectedEvidence.originalFileName || "Chưa cập nhật tên tệp tin"}
+              </Text>
+            </div>
+
+            <div className="pt-2 flex flex-col gap-2">
+              <div className="flex gap-2">
+                <Button 
+                  className="flex-1"
+                  color="blue" 
+                  variant="light"
+                  leftSection={<IconEye size={16} />}
+                  onClick={() => setShowPreview(!showPreview)}
+                >
+                  {showPreview ? "Ẩn nội dung xem trước" : "Xem trực tuyến minh chứng"}
+                </Button>
+                <Button 
+                  className="flex-1"
+                  color="teal" 
+                  variant="outline"
+                  leftSection={<IconDownload size={16} />}
+                  onClick={() => handleDownload(selectedEvidence.urlFile, selectedEvidence.originalFileName)}
+                >
+                  Tải về máy
+                </Button>
+              </div>
+
+              {showPreview && (
+                <div className="mt-2 p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-3">
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                    <Text fw={600} size="xs" className="text-slate-700">Trình xem trực tuyến:</Text>
+                    <a 
+                      href={selectedEvidence.urlFile} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline flex items-center gap-1 font-semibold"
+                    >
+                      <IconExternalLink size={12} />
+                      Mở trong tab mới
+                    </a>
+                  </div>
+                  
+                  <div className="overflow-hidden flex justify-center bg-white rounded-md border border-slate-200 p-2 min-h-[250px]">
+                    {(() => {
+                      const format = selectedEvidence.fileFormat ? selectedEvidence.fileFormat.toLowerCase() : ""
+                      const url = selectedEvidence.urlFile
+                      if (!url || url === "#") {
+                        return <Text size="xs" c="red" className="text-center my-auto">Không tìm thấy đường dẫn tệp tin thực tế.</Text>
+                      }
+                      if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(format)) {
+                        return (
+                          <img 
+                            src={url} 
+                            alt={selectedEvidence.title} 
+                            className="max-h-[350px] object-contain rounded" 
+                          />
+                        )
+                      } else if (format === "pdf") {
+                        return (
+                          <iframe 
+                            src={url} 
+                            title={selectedEvidence.title} 
+                            className="w-full h-[400px] border-0" 
+                          />
+                        )
+                      } else if (["docx", "doc", "xlsx", "xls", "pptx", "ppt"].includes(format)) {
+                        return (
+                          <div className="w-full space-y-2">
+                            <iframe 
+                              src={`https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`} 
+                              title={selectedEvidence.title} 
+                              className="w-full h-[350px] border-0" 
+                            />
+                            <Text size="10px" c="dimmed" className="text-center block">
+                              Mẹo: Nếu văn bản tải chậm hoặc không hiển thị, vui lòng nhấn "Tải về máy" hoặc "Mở trong tab mới" để xem.
+                            </Text>
+                          </div>
+                        )
+                      } else {
+                        return (
+                          <div className="text-center my-auto p-4 space-y-2">
+                            <IconFileText size={40} className="text-slate-400 mx-auto" />
+                            <Text size="xs" c="dimmed">Không hỗ trợ xem trước trực tiếp định dạng này ({format.toUpperCase()}).</Text>
+                            <Button 
+                              size="xs" 
+                              variant="light" 
+                              color="blue" 
+                              onClick={() => window.open(url, "_blank")}
+                            >
+                              Mở bằng trình duyệt
+                            </Button>
+                          </div>
+                        )
+                      }
+                    })()}
+                  </div>
+                </div>
+              )}
             </div>
 
             <Textarea
@@ -469,14 +589,20 @@ export default function DepartmentHeadDashboard({
                 color="red"
                 variant="light"
                 leftSection={<IconAlertTriangle size={16} />}
-                onClick={() => handleRequestSupplement(selectedEvidence)}
+                onClick={() => {
+                  handleRequestSupplement(selectedEvidence)
+                  setShowPreview(false)
+                }}
               >
                 Yêu Cầu Bổ Sung
               </Button>
               <Button
                 color="emerald"
                 leftSection={<IconCheck size={16} />}
-                onClick={() => handleApprove(selectedEvidence)}
+                onClick={() => {
+                  handleApprove(selectedEvidence)
+                  setShowPreview(false)
+                }}
               >
                 Phê Duyệt Minh Chứng
               </Button>

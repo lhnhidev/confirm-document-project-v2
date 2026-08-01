@@ -13,8 +13,11 @@
     "lint": "npm run lint --workspace=apps/frontend/web"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1101.0",
+    "@types/multer": "^2.2.0",
     "concurrently": "^10.0.4",
-    "jsonwebtoken": "^9.0.3"
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.2.0"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.10"

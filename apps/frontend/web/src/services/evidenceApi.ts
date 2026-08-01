@@ -198,20 +198,29 @@ export async function fetchEvidencesApi(): Promise<EvidenceItem[]> {
 }
 
 /**
- * Backend API Call: Nộp minh chứng mới
+ * Backend API Call: Nộp minh chứng mới (gửi kèm FormData lên Cloudflare R2 hoặc JSON)
  */
 export async function submitEvidenceApi(
-  evidenceData: Omit<EvidenceItem, "id" | "evidenceId" | "submittedBy">
+  payload: FormData | Omit<EvidenceItem, "id" | "evidenceId" | "submittedBy">
 ): Promise<EvidenceItem | null> {
   const token = getToken()
   try {
+    let body: FormData | string
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`
+    }
+
+    if (payload instanceof FormData) {
+      body = payload
+    } else {
+      headers["Content-Type"] = "application/json"
+      body = JSON.stringify(payload)
+    }
+
     const response = await fetch("/api/evidences", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify(evidenceData)
+      headers,
+      body
     })
     if (!response.ok) {return null}
     const data = await response.json()

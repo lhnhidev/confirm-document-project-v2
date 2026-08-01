@@ -65,21 +65,20 @@ const App = () => {
   }
 
   const handleAddEvidence = async (
-    newEv: Omit<EvidenceItem, "id" | "evidenceId" | "submittedBy">
+    payload: Omit<EvidenceItem, "id" | "evidenceId" | "submittedBy"> | FormData
   ) => {
-    if (!currentUser) return
+    if (!currentUser) {return}
 
-    // Call Backend API
-    const apiResult = await submitEvidenceApi(newEv)
+    const apiResult = await submitEvidenceApi(payload)
     if (apiResult) {
       setEvidences((prev) => [apiResult, ...prev])
-    } else {
-      // Fallback local addition if offline
+    } else if (!(payload instanceof FormData)) {
+      // Fallback local addition if offline and not FormData
       const newId = `EV-${String(evidences.length + 1).padStart(3, "0")}`
       const newEvidenceId = `MC-2026-${String(evidences.length + 1).padStart(3, "0")}`
 
       const createdItem: EvidenceItem = {
-        ...newEv,
+        ...payload,
         id: newId,
         evidenceId: newEvidenceId,
         submittedBy: {
@@ -103,10 +102,10 @@ const App = () => {
       prev.map((item) =>
         item.id === id || item.evidenceId === id
           ? {
-              ...item,
-              currentStatus: status,
-              reviewComment: comment || item.reviewComment
-            }
+            ...item,
+            currentStatus: status,
+            reviewComment: comment || item.reviewComment
+          }
           : item
       )
     )
@@ -117,37 +116,37 @@ const App = () => {
   }
 
   switch (currentUser.role) {
-    case UserRole.TEACHER:
-      return (
-        <TeacherDashboard
-          currentUser={currentUser}
-          evidences={evidences}
-          onAddEvidence={handleAddEvidence}
-          onLogout={handleLogout}
-        />
-      )
+  case UserRole.TEACHER:
+    return (
+      <TeacherDashboard
+        currentUser={currentUser}
+        evidences={evidences}
+        onAddEvidence={handleAddEvidence}
+        onLogout={handleLogout}
+      />
+    )
 
-    case UserRole.DEPARTMENT_HEAD:
-      return (
-        <DepartmentHeadDashboard
-          currentUser={currentUser}
-          evidences={evidences}
-          onUpdateStatus={handleUpdateStatus}
-          onLogout={handleLogout}
-        />
-      )
+  case UserRole.DEPARTMENT_HEAD:
+    return (
+      <DepartmentHeadDashboard
+        currentUser={currentUser}
+        evidences={evidences}
+        onUpdateStatus={handleUpdateStatus}
+        onLogout={handleLogout}
+      />
+    )
 
-    case UserRole.SCHOOL_BOARD:
-      return (
-        <SchoolBoardDashboard
-          currentUser={currentUser}
-          evidences={evidences}
-          onLogout={handleLogout}
-        />
-      )
+  case UserRole.SCHOOL_BOARD:
+    return (
+      <SchoolBoardDashboard
+        currentUser={currentUser}
+        evidences={evidences}
+        onLogout={handleLogout}
+      />
+    )
 
-    default:
-      return <LoginPage onLoginSuccess={handleLoginSuccess} />
+  default:
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />
   }
 }
 

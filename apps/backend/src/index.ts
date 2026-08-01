@@ -1,4 +1,5 @@
 import express, { type Express, type Request, type Response } from "express";
+import path from "path";
 import dotenv from "dotenv";
 import cors from "cors";
 import { connect } from "./db/index.ts";
@@ -8,7 +9,9 @@ import fieldRoutes from "./routes/field.routes.ts";
 import { syncSeedUsersToDatabase } from "./db/seedUsersData.ts";
 import { syncFieldsToDatabase } from "./db/seedFieldsData.ts";
 
+// Load environment variables from the current directory first, then fallback to the project root
 dotenv.config();
+dotenv.config({ path: path.resolve(process.cwd(), "../../.env") });
 
 const app: Express = express();
 const PORT = process.env.BACKEND_PORT || 5000;

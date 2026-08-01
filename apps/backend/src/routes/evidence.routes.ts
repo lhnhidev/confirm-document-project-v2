@@ -1,12 +1,20 @@
 import { Router, type Response } from "express";
 import { Types } from "mongoose";
+import multer from "multer";
+import { get as httpsGet } from "https";
+import { get as httpGet } from "http";
 import { Evidence, EvidenceStatus } from "../models/evidence.model.ts";
 import { User, UserRole } from "../models/user.model.ts";
 import { Field } from "../models/field.model.ts";
 import { authenticateToken, authorizeRoles, type AuthRequest } from "../middleware/auth.middleware.ts";
 import { FALLBACK_FIELDS } from "../db/seedFieldsData.ts";
+import { uploadFilesToR2 } from "../services/r2.service.ts";
 
 const router = Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }
+});
 
 // Total criteria count from the 8 fields = 35
 const TOTAL_CRITERIA_COUNT = FALLBACK_FIELDS.reduce((acc, f) => acc + f.criteria.length, 0);
@@ -37,6 +45,59 @@ let inMemoryEvidences: any[] = [
 ];
 
 /**
+ * Helper to dynamically rewrite R2 URLs to use the configured Public Development Domain
+ */
+const ensureCorrectPublicUrl = (url: string): string => {
+  if (!url || url === "#") return "#";
+  const publicDomain = process.env.CLOUDFLARE_R2_PUBLIC_DOMAIN || process.env.R2_PUBLIC_DOMAIN;
+  if (!publicDomain) return url;
+
+  if (url.includes(".r2.dev") || url.includes("r2.cloudflarestorage.com") || url.includes("r2.cloudflare.com")) {
+    try {
+      const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || process.env.R2_BUCKET_NAME || "confim-document-project-v2";
+      const fallbackBucket = "confirm-documents";
+      
+      if (url.includes(`/${bucketName}/`)) {
+        const parts = url.split(`/${bucketName}/`);
+        if (parts.length > 1) {
+          return `${publicDomain}/${parts.slice(1).join(`/${bucketName}/`)}`;
+        }
+      } else if (url.includes(`${bucketName}/`)) {
+        const parts = url.split(`${bucketName}/`);
+        if (parts.length > 1) {
+          return `${publicDomain}/${parts.slice(1).join(`${bucketName}/`)}`;
+        }
+      }
+      
+      if (url.includes(`/${fallbackBucket}/`)) {
+        const parts = url.split(`/${fallbackBucket}/`);
+        if (parts.length > 1) {
+          return `${publicDomain}/${parts.slice(1).join(`/${fallbackBucket}/`)}`;
+        }
+      }
+
+      const parsed = new URL(url);
+      const path = parsed.pathname;
+      let cleanPath = path;
+      if (cleanPath.startsWith(`/${bucketName}`)) {
+        cleanPath = cleanPath.substring(bucketName.length + 1);
+      } else if (cleanPath.startsWith(`/${fallbackBucket}`)) {
+        cleanPath = cleanPath.substring(fallbackBucket.length + 1);
+      }
+      
+      if (cleanPath.startsWith("/")) {
+        cleanPath = cleanPath.substring(1);
+      }
+      
+      return `${publicDomain}/${cleanPath}`;
+    } catch (e) {
+      console.error("Error parsing URL in ensureCorrectPublicUrl:", e);
+    }
+  }
+  return url;
+};
+
+/**
  * Helper định dạng minh chứng từ MongoDB Atlas sang định dạng DTO cho Frontend
  */
 const formatEvidenceItem = (e: any, fallbackUser?: any) => {
@@ -60,7 +121,7 @@ const formatEvidenceItem = (e: any, fallbackUser?: any) => {
     originalFileName: e.originalFileName,
     fileFormat: e.fileFormat,
     fileSize: e.fileSize,
-    urlFile: e.urlFile,
+    urlFile: ensureCorrectPublicUrl(e.urlFile),
     currentStatus: e.currentStatus,
     date: e.date ? new Date(e.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
     submittedBy: {
@@ -71,6 +132,49 @@ const formatEvidenceItem = (e: any, fallbackUser?: any) => {
     },
   };
 };
+
+/**
+ * GET /api/evidences/download-proxy
+ * Hỗ trợ tải tệp tin minh chứng bỏ qua rào cản CORS và buộc trình duyệt tải xuống.
+ */
+router.get("/download-proxy", async (req, res) => {
+  try {
+    const fileUrl = req.query.url as string;
+    const filename = req.query.filename as string || "download";
+
+    if (!fileUrl || fileUrl === "#") {
+      return res.status(400).send("Không có đường dẫn tệp tin hợp lệ.");
+    }
+
+    const client = fileUrl.startsWith("https") ? httpsGet : httpGet;
+
+    client(fileUrl, (stream) => {
+      // Xử lý chuyển hướng nếu R2 trả về mã 3xx
+      if (stream.statusCode && stream.statusCode >= 300 && stream.statusCode < 400 && stream.headers.location) {
+        const redirectUrl = stream.headers.location;
+        const nextClient = redirectUrl.startsWith("https") ? httpsGet : httpGet;
+        nextClient(redirectUrl, (redirectStream) => {
+          res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+          res.setHeader("Content-Type", redirectStream.headers["content-type"] || "application/octet-stream");
+          redirectStream.pipe(res);
+        }).on("error", (err) => {
+          console.error("Lỗi download proxy redirect:", err);
+          res.redirect(fileUrl);
+        });
+      } else {
+        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+        res.setHeader("Content-Type", stream.headers["content-type"] || "application/octet-stream");
+        stream.pipe(res);
+      }
+    }).on("error", (err) => {
+      console.error("Lỗi download proxy:", err);
+      res.redirect(fileUrl);
+    });
+  } catch (error) {
+    console.error("Lỗi trong download proxy:", error);
+    res.status(500).send("Lỗi hệ thống khi tải tệp.");
+  }
+});
 
 /**
  * GET /api/evidences/my-summary
@@ -327,7 +431,7 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response) => {
             originalFileName: e.originalFileName,
             fileFormat: e.fileFormat,
             fileSize: e.fileSize,
-            urlFile: e.urlFile,
+            urlFile: ensureCorrectPublicUrl(e.urlFile),
             currentStatus: e.currentStatus,
             date: new Date(e.date).toISOString().split("T")[0],
             submittedBy: {
@@ -457,14 +561,20 @@ router.get("/stats", authenticateToken, async (req: AuthRequest, res: Response) 
  * POST /api/evidences
  * Nộp minh chứng mới
  */
-router.post("/", authenticateToken, async (req: AuthRequest, res: Response) => {
+/**
+ * POST /api/evidences
+ * Nộp minh chứng mới và lưu tệp lên Cloudflare R2 theo cấu trúc thư mục:
+ * id_người_dùng_hiện_tại-tên_người_dùng-role-môn_dạy / fieldCode / criteriaId / files
+ */
+router.post("/", authenticateToken, upload.array("files", 10), async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user;
     if (!user) {
       return res.status(401).json({ success: false, message: "Chưa xác thực!" });
     }
 
-    const { title, description, standardName, criteriaName, originalFileName, fileFormat, fileSize, urlFile } = req.body;
+    const { title, description, standardName, fieldCode, criteriaName, criteriaId } = req.body;
+    const files = (req.files as Express.Multer.File[]) || [];
 
     const dbUser = await User.findOne({
       $or: [
@@ -473,8 +583,34 @@ router.post("/", authenticateToken, async (req: AuthRequest, res: Response) => {
       ]
     });
 
+    const userInfoForR2 = dbUser ? {
+      userId: dbUser.userId,
+      fullName: dbUser.fullName,
+      role: dbUser.role,
+      major: dbUser.major || dbUser.departmentName,
+    } : {
+      userId: user.userId,
+      fullName: user.fullName,
+      role: user.role,
+      major: user.departmentName,
+    };
+
+    let r2Result = {
+      urlFile: "https://example.com/files/minhchung.pdf",
+      fileNames: req.body.originalFileName || "minh_chung.pdf",
+      fileFormats: req.body.fileFormat || "application/pdf",
+      totalSize: Number(req.body.fileSize) || 1024000,
+    };
+
+    if (files.length > 0) {
+      r2Result = await uploadFilesToR2(userInfoForR2, fieldCode || "I", criteriaId || "TC101", files);
+    }
+
     if (dbUser) {
       let field = await Field.findOne({ user: dbUser._id, fieldName: standardName });
+      if (!field && fieldCode) {
+        field = await Field.findOne({ user: dbUser._id, fieldCode: fieldCode });
+      }
       if (!field) {
         field = await Field.findOne({ user: dbUser._id });
       }
@@ -482,7 +618,7 @@ router.post("/", authenticateToken, async (req: AuthRequest, res: Response) => {
       let criterionId: any = new Types.ObjectId();
       if (field && field.criteria && field.criteria.length > 0) {
         const foundCrit = field.criteria.find((c: any) =>
-          c.criteriaName === criteriaName || criteriaName?.includes(c.criteriaId) || criteriaName?.includes(c.criteriaName)
+          c.criteriaId === criteriaId || c.criteriaName === criteriaName || criteriaName?.includes(c.criteriaId)
         );
         if (foundCrit) {
           criterionId = (foundCrit as any)._id || criterionId;
@@ -501,10 +637,10 @@ router.post("/", authenticateToken, async (req: AuthRequest, res: Response) => {
         title: title || "Minh chứng mới",
         description: description || "",
         date: new Date(),
-        originalFileName: originalFileName || "minh_chung.pdf",
-        fileFormat: fileFormat || "application/pdf",
-        fileSize: fileSize || 1024000,
-        urlFile: urlFile || "#",
+        originalFileName: r2Result.fileNames,
+        fileFormat: r2Result.fileFormats,
+        fileSize: r2Result.totalSize,
+        urlFile: r2Result.urlFile,
         currentStatus: EvidenceStatus.PENDING,
         submittedBy: dbUser._id,
         fieldId: field?._id,
@@ -525,7 +661,7 @@ router.post("/", authenticateToken, async (req: AuthRequest, res: Response) => {
         originalFileName: createdEv.originalFileName,
         fileFormat: createdEv.fileFormat,
         fileSize: createdEv.fileSize,
-        urlFile: createdEv.urlFile,
+        urlFile: ensureCorrectPublicUrl(createdEv.urlFile),
         currentStatus: createdEv.currentStatus,
         date: new Date(createdEv.date).toISOString().split("T")[0],
         submittedBy: {
@@ -538,7 +674,7 @@ router.post("/", authenticateToken, async (req: AuthRequest, res: Response) => {
 
       return res.status(201).json({
         success: true,
-        message: "Nộp minh chứng mới thành công vào MongoDB Atlas!",
+        message: "Nộp minh chứng lên Cloudflare R2 và MongoDB Atlas thành công!",
         evidence: newEvFormatted,
       });
     }
@@ -554,10 +690,10 @@ router.post("/", authenticateToken, async (req: AuthRequest, res: Response) => {
       description: description || "",
       standardName: standardName || "I. NĂNG LỰC SỬ DỤNG CÔNG NGHỆ SỐ",
       criteriaName: criteriaName || "TC101. Vận hành thiết bị số phục vụ công việc chuyên môn",
-      originalFileName: originalFileName || "tai_lieu_minh_chung.pdf",
-      fileFormat: fileFormat || "application/pdf",
-      fileSize: fileSize || 1024000,
-      urlFile: urlFile || "https://example.com/files/doc.pdf",
+      originalFileName: r2Result.fileNames,
+      fileFormat: r2Result.fileFormats,
+      fileSize: r2Result.totalSize,
+      urlFile: ensureCorrectPublicUrl(r2Result.urlFile),
       currentStatus: EvidenceStatus.PENDING,
       date: new Date().toISOString().split("T")[0],
       submittedBy: {
@@ -572,7 +708,7 @@ router.post("/", authenticateToken, async (req: AuthRequest, res: Response) => {
 
     return res.status(201).json({
       success: true,
-      message: "Nộp minh chứng mới thành công qua Backend API!",
+      message: "Nộp minh chứng lên Cloudflare R2 thành công!",
       evidence: newEvidenceItem,
     });
   } catch (error: any) {

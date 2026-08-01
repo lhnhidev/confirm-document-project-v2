@@ -59,7 +59,7 @@ export async function loginWithBackend(
         message: data.message || "Email hoặc mật khẩu không chính xác!"
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("❌ Network or Backend connection error:", error)
     return {
       success: false,

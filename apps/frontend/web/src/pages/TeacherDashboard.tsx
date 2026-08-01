@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import { useState, useEffect, useCallback, type FormEvent } from "react"
 import {
   Title,
@@ -37,7 +38,9 @@ import {
   IconListDetails,
   IconTable,
   IconRefresh,
-  IconSparkles
+  IconSparkles,
+  IconDownload,
+  IconExternalLink
 } from "@tabler/icons-react"
 import type { User, EvidenceItem, EvidenceStatus } from "../types/auth"
 import { EvidenceStatus as EvidenceStatusValues } from "../types/auth"
@@ -142,7 +145,7 @@ const FRONTEND_FALLBACK_FIELDS: FieldItem[] = [
 interface TeacherDashboardProps {
   currentUser: User
   evidences: EvidenceItem[]
-  onAddEvidence: (_newEvidence: Omit<EvidenceItem, "id" | "evidenceId" | "submittedBy">) => void
+  onAddEvidence: (_payload: FormData) => void
   onLogout: () => void
 }
 
@@ -156,6 +159,14 @@ export default function TeacherDashboard({
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceItem | null>(null)
+  const [showPreview, setShowPreview] = useState<boolean>(false)
+
+  const handleDownload = (url: string, filename: string) => {
+    if (!url || url === "#") {
+      return
+    }
+    window.location.href = `/api/evidences/download-proxy?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`
+  }
 
   // API Backend states with Pagination
   const [loadingApi, setLoadingApi] = useState(true)
@@ -178,6 +189,17 @@ export default function TeacherDashboard({
   const [criteriaName, setCriteriaName] = useState("Vận hành thiết bị số phục vụ công việc chuyên môn")
   const [selectedFiles, setSelectedFiles] = useState<File[] | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
+  const [notificationMessage, setNotificationMessage] = useState<string | null>(null)
+  const [notificationTimeoutId, setNotificationTimeoutId] = useState<ReturnType<typeof setTimeout> | null>(null)
+
+  // Clear timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (notificationTimeoutId) {
+        clearTimeout(notificationTimeoutId)
+      }
+    }
+  }, [notificationTimeoutId])
 
   useEffect(() => {
     getFieldsAndCriteria().then((res) => {
@@ -273,6 +295,17 @@ export default function TeacherDashboard({
   const completionPercentage = apiSummary ? apiSummary.completionPercentage : Math.round((approvedCount / totalCriteriaCount) * 100)
   const completedCriteriaCount = apiSummary ? apiSummary.completedCriteriaCount : approvedCount
 
+  const teacherEvidences = apiEvidences.length > 0 ? apiEvidences : fallbackTeacherEvidences
+
+  const isCriterionBlocked = (cName: string) => {
+    return teacherEvidences.some(
+      (e) =>
+        e.criteriaName === cName &&
+        (e.currentStatus === EvidenceStatusValues.APPROVED ||
+          e.currentStatus === EvidenceStatusValues.PENDING)
+    )
+  }
+
   const standardOptions = fields.map((f) => ({
     value: f.fieldName,
     label: `Tiêu chuẩn ${f.fieldCode}: ${f.fieldName}`
@@ -280,10 +313,19 @@ export default function TeacherDashboard({
 
   const selectedFieldObj = fields.find((f) => f.fieldName === standardName) || fields[0]
   const criteriaOptions = selectedFieldObj
-    ? selectedFieldObj.criteria.map((c) => ({
-      value: c.criteriaName,
-      label: `${c.criteriaId}: ${c.criteriaName}`
-    }))
+    ? selectedFieldObj.criteria.map((c) => {
+      const blocked = isCriterionBlocked(c.criteriaName)
+      let suffix = ""
+      if (blocked) {
+        const matching = teacherEvidences.find((e) => e.criteriaName === c.criteriaName)
+        const statusText = matching?.currentStatus === EvidenceStatusValues.APPROVED ? "Đã duyệt" : "Chờ duyệt"
+        suffix = ` [🔒 ${statusText}]`
+      }
+      return {
+        value: c.criteriaName,
+        label: `${c.criteriaId}: ${c.criteriaName}${suffix}`
+      }
+    })
     : []
 
   const handleFileChange = (files: File[] | File | null) => {
@@ -331,22 +373,38 @@ export default function TeacherDashboard({
       return
     }
 
-    const originalFileName = selectedFiles.map((f) => f.name).join(", ")
-    const totalFileSize = selectedFiles.reduce((acc, f) => acc + f.size, 0)
-    const fileFormat = selectedFiles[0].type || "application/pdf"
+    if (isCriterionBlocked(criteriaName)) {
+      const matching = teacherEvidences.find((e) => e.criteriaName === criteriaName)
+      const statusText = matching?.currentStatus === EvidenceStatusValues.APPROVED ? "đã được phê duyệt" : "đang trong trạng thái chờ thẩm định"
+      setNotificationMessage(`Tiêu chí này ${statusText}. Vui lòng không nộp thêm minh chứng cho tiêu chí này!`)
+      if (notificationTimeoutId) {
+        clearTimeout(notificationTimeoutId)
+      }
+      const timeoutId = setTimeout(() => {
+        setNotificationMessage(null)
+      }, 4000)
+      setNotificationTimeoutId(timeoutId)
+      return
+    }
 
-    await onAddEvidence({
-      title,
-      description,
-      date: new Date().toISOString().split("T")[0],
-      originalFileName,
-      fileFormat,
-      fileSize: totalFileSize,
-      urlFile: "#",
-      currentStatus: EvidenceStatusValues.PENDING,
-      standardName,
-      criteriaName
-    })
+    const selectedFieldObj = fields.find((f) => f.fieldName === standardName) || fields[0]
+    const fieldCode = selectedFieldObj ? selectedFieldObj.fieldCode : "I"
+    const selectedCritObj = selectedFieldObj?.criteria.find((c) => c.criteriaName === criteriaName)
+    const criteriaId = selectedCritObj ? selectedCritObj.criteriaId : "TC101"
+
+    const formData = new FormData()
+    formData.append("title", title)
+    formData.append("description", description)
+    formData.append("standardName", standardName)
+    formData.append("fieldCode", fieldCode)
+    formData.append("criteriaName", criteriaName)
+    formData.append("criteriaId", criteriaId)
+
+    for (const file of selectedFiles) {
+      formData.append("files", file)
+    }
+
+    await onAddEvidence(formData)
 
     // Reset form and reload API stats (reset page to 1 to show newly submitted evidence)
     setTitle("")
@@ -614,7 +672,10 @@ export default function TeacherDashboard({
                                 variant="light"
                                 color="blue"
                                 size="sm"
-                                onClick={() => setSelectedEvidence(item)}
+                                onClick={() => {
+                                  setSelectedEvidence(item)
+                                  setShowPreview(false)
+                                }}
                               >
                                 <IconEye size={16} />
                               </ActionIcon>
@@ -664,7 +725,13 @@ export default function TeacherDashboard({
       {/* Modal: Nộp Minh Chứng Mới */}
       <Modal
         opened={modalOpened}
-        onClose={() => setModalOpened(false)}
+        onClose={() => {
+          setModalOpened(false)
+          setNotificationMessage(null)
+          if (notificationTimeoutId) {
+            clearTimeout(notificationTimeoutId)
+          }
+        }}
         title={
           <Group gap="xs">
             <IconFileUpload className="text-blue-900" size={20} />
@@ -675,6 +742,19 @@ export default function TeacherDashboard({
         size="lg"
         centered
       >
+        {notificationMessage && (
+          <Alert 
+            color="red" 
+            title="Lưu ý quan trọng" 
+            icon={<IconAlertTriangle size={16} />} 
+            className="mb-4"
+            styles={{
+              title: { fontWeight: 700 }
+            }}
+          >
+            {notificationMessage}
+          </Alert>
+        )}
         <form onSubmit={handleFormSubmit} className="space-y-4">
           <TextInput
             label="Tên minh chứng"
@@ -693,7 +773,12 @@ export default function TeacherDashboard({
                 setStandardName(val)
                 const fObj = fields.find((f) => f.fieldName === val)
                 if (fObj && fObj.criteria.length > 0) {
-                  setCriteriaName(fObj.criteria[0].criteriaName)
+                  const firstUnblocked = fObj.criteria.find(c => !isCriterionBlocked(c.criteriaName))
+                  if (firstUnblocked) {
+                    setCriteriaName(firstUnblocked.criteriaName)
+                  } else {
+                    setCriteriaName(fObj.criteria[0].criteriaName)
+                  }
                 }
               }
             }}
@@ -703,7 +788,24 @@ export default function TeacherDashboard({
             label="Thuộc Tiêu chí cụ thể"
             data={criteriaOptions}
             value={criteriaName}
-            onChange={(val) => setCriteriaName(val || "")}
+            onChange={(val) => {
+              if (val) {
+                if (isCriterionBlocked(val)) {
+                  const matching = teacherEvidences.find((e) => e.criteriaName === val)
+                  const statusText = matching?.currentStatus === EvidenceStatusValues.APPROVED ? "đã được duyệt" : "đang chờ duyệt"
+                  setNotificationMessage(`Tiêu chí này ${statusText}. Vui lòng không nộp thêm minh chứng cho tiêu chí này!`)
+                  if (notificationTimeoutId) {
+                    clearTimeout(notificationTimeoutId)
+                  }
+                  const timeoutId = setTimeout(() => {
+                    setNotificationMessage(null)
+                  }, 4000)
+                  setNotificationTimeoutId(timeoutId)
+                  return
+                }
+                setCriteriaName(val)
+              }
+            }}
           />
 
           <FileInput
@@ -742,7 +844,10 @@ export default function TeacherDashboard({
       {selectedEvidence && (
         <Modal
           opened={!!selectedEvidence}
-          onClose={() => setSelectedEvidence(null)}
+          onClose={() => {
+            setSelectedEvidence(null)
+            setShowPreview(false)
+          }}
           title={
             <Group gap="xs">
               <IconFileText size={20} className="text-blue-900" />
@@ -750,7 +855,7 @@ export default function TeacherDashboard({
             </Group>
           }
           radius="lg"
-          size="md"
+          size="lg"
           centered
         >
           <div className="space-y-4">
@@ -776,14 +881,122 @@ export default function TeacherDashboard({
               <Text size="xs" className="text-slate-600">{selectedEvidence.criteriaName}</Text>
             </div>
 
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <Text size="xs" c="dimmed">Tệp đính kèm:</Text>
+                <Badge variant="light" size="sm">{selectedEvidence.fileFormat ? selectedEvidence.fileFormat.toUpperCase() : "Không rõ"}</Badge>
+              </div>
+              <Text size="xs" fw={600} className="text-slate-800 truncate block">
+                {selectedEvidence.originalFileName || "Chưa cập nhật tên tệp tin"}
+              </Text>
+            </div>
+
             {selectedEvidence.reviewComment && (
               <Alert color="blue" title="Nhận xét từ Tổ trưởng / BGH">
                 <Text size="xs">{selectedEvidence.reviewComment}</Text>
               </Alert>
             )}
 
+            <div className="pt-2 flex flex-col gap-2">
+              <div className="flex gap-2">
+                <Button 
+                  className="flex-1"
+                  color="blue" 
+                  variant="light"
+                  leftSection={<IconEye size={16} />}
+                  onClick={() => setShowPreview(!showPreview)}
+                >
+                  {showPreview ? "Ẩn nội dung xem trước" : "Xem trực tuyến minh chứng"}
+                </Button>
+                <Button 
+                  className="flex-1"
+                  color="teal" 
+                  variant="outline"
+                  leftSection={<IconDownload size={16} />}
+                  onClick={() => handleDownload(selectedEvidence.urlFile, selectedEvidence.originalFileName)}
+                >
+                  Tải về máy
+                </Button>
+              </div>
+
+              {showPreview && (
+                <div className="mt-2 p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-3">
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                    <Text fw={600} size="xs" className="text-slate-700">Trình xem trực tuyến:</Text>
+                    <a 
+                      href={selectedEvidence.urlFile} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline flex items-center gap-1 font-semibold"
+                    >
+                      <IconExternalLink size={12} />
+                      Mở trong tab mới
+                    </a>
+                  </div>
+                  
+                  <div className="overflow-hidden flex justify-center bg-white rounded-md border border-slate-200 p-2 min-h-[250px]">
+                    {(() => {
+                      const format = selectedEvidence.fileFormat ? selectedEvidence.fileFormat.toLowerCase() : ""
+                      const url = selectedEvidence.urlFile
+                      if (!url || url === "#") {
+                        return <Text size="xs" c="red" className="text-center my-auto">Không tìm thấy đường dẫn tệp tin thực tế.</Text>
+                      }
+                      if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(format)) {
+                        return (
+                          <img 
+                            src={url} 
+                            alt={selectedEvidence.title} 
+                            className="max-h-[350px] object-contain rounded" 
+                          />
+                        )
+                      } else if (format === "pdf") {
+                        return (
+                          <iframe 
+                            src={url} 
+                            title={selectedEvidence.title} 
+                            className="w-full h-[400px] border-0" 
+                          />
+                        )
+                      } else if (["docx", "doc", "xlsx", "xls", "pptx", "ppt"].includes(format)) {
+                        return (
+                          <div className="w-full space-y-2">
+                            <iframe 
+                              src={`https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`} 
+                              title={selectedEvidence.title} 
+                              className="w-full h-[350px] border-0" 
+                            />
+                            <Text size="10px" c="dimmed" className="text-center block">
+                              Mẹo: Nếu văn bản tải chậm hoặc không hiển thị, vui lòng nhấn "Tải về máy" hoặc "Mở trong tab mới" để xem.
+                            </Text>
+                          </div>
+                        )
+                      } else {
+                        return (
+                          <div className="text-center my-auto p-4 space-y-2">
+                            <IconFileText size={40} className="text-slate-400 mx-auto" />
+                            <Text size="xs" c="dimmed">Không hỗ trợ xem trước trực tiếp định dạng này ({format.toUpperCase()}).</Text>
+                            <Button 
+                              size="xs" 
+                              variant="light" 
+                              color="blue" 
+                              onClick={() => window.open(url, "_blank")}
+                            >
+                              Mở bằng trình duyệt
+                            </Button>
+                          </div>
+                        )
+                      }
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="pt-2 flex justify-end">
-              <Button size="xs" onClick={() => setSelectedEvidence(null)}>
+              <Button size="xs" onClick={() => {
+                setSelectedEvidence(null)
+                setShowPreview(false)
+              }}>
                 Đóng
               </Button>
             </div>
