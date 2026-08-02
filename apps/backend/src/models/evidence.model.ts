@@ -17,6 +17,7 @@ export interface IEvidence extends Document {
   fileSize: number; // Tương ứng Long (tính bằng bytes)
   urlFile: string;
   currentStatus: EvidenceStatus;
+  reviewComment?: string;
 
   // Relations
   submittedBy: Types.ObjectId; // FK -> User
@@ -43,6 +44,7 @@ const evidenceSchema = new Schema<IEvidence>(
       default: EvidenceStatus.PENDING,
       required: true,
     },
+    reviewComment: { type: String, trim: true },
     // Khóa ngoại liên kết
     submittedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     fieldId: { type: Schema.Types.ObjectId, ref: "Field", required: true },

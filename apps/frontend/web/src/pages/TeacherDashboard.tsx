@@ -40,13 +40,15 @@ import {
   IconRefresh,
   IconSparkles,
   IconDownload,
-  IconExternalLink
+  IconExternalLink,
+  IconEdit,
+  IconTrash
 } from "@tabler/icons-react"
 import type { User, EvidenceItem, EvidenceStatus } from "../types/auth"
 import { EvidenceStatus as EvidenceStatusValues } from "../types/auth"
 import AppHeader from "../components/AppHeader"
 import CriteriaMatrixTable from "../components/CriteriaMatrixTable"
-import { getTeacherSummaryApi, getFieldsAndCriteria, type TeacherSummaryData, type PaginationInfo, type FieldItem } from "../services/evidenceApi"
+import { getTeacherSummaryApi, getFieldsAndCriteria, deleteEvidenceApi, updateEvidenceApi, type TeacherSummaryData, type PaginationInfo, type FieldItem } from "../services/evidenceApi"
 
 const FRONTEND_FALLBACK_FIELDS: FieldItem[] = [
   {
@@ -183,6 +185,7 @@ export default function TeacherDashboard({
 
   // Form states for adding new evidence
   const [fields, setFields] = useState<FieldItem[]>(FRONTEND_FALLBACK_FIELDS)
+  const [editingEvidence, setEditingEvidence] = useState<EvidenceItem | null>(null)
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [standardName, setStandardName] = useState("NĂNG LỰC SỬ DỤNG CÔNG NGHỆ SỐ")
@@ -297,33 +300,178 @@ export default function TeacherDashboard({
 
   const teacherEvidences = apiEvidences.length > 0 ? apiEvidences : fallbackTeacherEvidences
 
+  const getCriterionBlockedStatus = (c: { criteriaId: string; criteriaName: string; status?: string }) => {
+    // 1. Check criterion status directly from fields API
+    if (c.status === "approved" || c.status === "APPROVED") {
+      return { blocked: true, statusText: "đã được duyệt", labelStatus: "Đã duyệt" }
+    }
+    if (c.status === "pending" || c.status === "PENDING") {
+      return { blocked: true, statusText: "đang chờ duyệt", labelStatus: "Chờ duyệt" }
+    }
+
+    // 2. Check in teacherEvidences as fallback/supplement
+    const matching = teacherEvidences.find((e) => {
+      if (!e) return false
+      return (
+        e.criteriaName === c.criteriaName ||
+        (e.criteriaName && (e.criteriaName.includes(c.criteriaId) || c.criteriaName.includes(e.criteriaName)))
+      )
+    })
+
+    if (matching) {
+      if (matching.currentStatus === EvidenceStatusValues.APPROVED) {
+        return { blocked: true, statusText: "đã được duyệt", labelStatus: "Đã duyệt" }
+      }
+      if (matching.currentStatus === EvidenceStatusValues.PENDING) {
+        return { blocked: true, statusText: "đang chờ duyệt", labelStatus: "Chờ duyệt" }
+      }
+    }
+
+    return { blocked: false, statusText: "", labelStatus: "" }
+  }
+
   const isCriterionBlocked = (cName: string) => {
+    for (const f of fields) {
+      if (!f.criteria) continue
+      const c = f.criteria.find(
+        (crit) =>
+          crit.criteriaName === cName ||
+          crit.criteriaId === cName ||
+          cName.includes(crit.criteriaId) ||
+          crit.criteriaName.includes(cName)
+      )
+      if (c) {
+        const res = getCriterionBlockedStatus(c)
+        if (res.blocked) return true
+      }
+    }
+
     return teacherEvidences.some(
       (e) =>
-        e.criteriaName === cName &&
-        (e.currentStatus === EvidenceStatusValues.APPROVED ||
-          e.currentStatus === EvidenceStatusValues.PENDING)
+        e.criteriaName &&
+        (e.criteriaName === cName || cName.includes(e.criteriaName) || e.criteriaName.includes(cName)) &&
+        (e.currentStatus === EvidenceStatusValues.APPROVED || e.currentStatus === EvidenceStatusValues.PENDING)
     )
   }
 
-  const standardOptions = fields.map((f) => ({
-    value: f.fieldName,
-    label: `Tiêu chuẩn ${f.fieldCode}: ${f.fieldName}`
-  }))
+  const isStandardBlocked = (field: FieldItem) => {
+    if (!field || !field.criteria || field.criteria.length === 0) {
+      return false
+    }
+    return field.criteria.every((c) => getCriterionBlockedStatus(c).blocked)
+  }
+
+  const handleOpenAddModal = async () => {
+    setEditingEvidence(null)
+    setTitle("")
+    setDescription("")
+    setSelectedFiles(null)
+    setFileError(null)
+
+    let currentFields = fields
+    const latestFields = await getFieldsAndCriteria()
+    if (latestFields && latestFields.length > 0) {
+      setFields(latestFields)
+      currentFields = latestFields
+    }
+
+    const firstStandardWithUnblocked = currentFields.find((f) =>
+      f.criteria && f.criteria.some((c) => !getCriterionBlockedStatus(c).blocked)
+    )
+
+    if (firstStandardWithUnblocked) {
+      setStandardName(firstStandardWithUnblocked.fieldName)
+      const firstUnblocked = firstStandardWithUnblocked.criteria.find(
+        (c) => !getCriterionBlockedStatus(c).blocked
+      )
+      if (firstUnblocked) {
+        setCriteriaName(firstUnblocked.criteriaName)
+      }
+    } else if (currentFields.length > 0) {
+      setStandardName(currentFields[0].fieldName)
+      if (currentFields[0].criteria && currentFields[0].criteria.length > 0) {
+        setCriteriaName(currentFields[0].criteria[0].criteriaName)
+      }
+    }
+    setModalOpened(true)
+  }
+
+  const handleOpenAddModalForCriterion = async (stdName: string, critName: string) => {
+    setEditingEvidence(null)
+    setTitle("")
+    setDescription("")
+    setSelectedFiles(null)
+    setFileError(null)
+
+    const latestFields = await getFieldsAndCriteria()
+    if (latestFields && latestFields.length > 0) {
+      setFields(latestFields)
+    }
+
+    setStandardName(stdName)
+    setCriteriaName(critName)
+    setModalOpened(true)
+  }
+
+  const handleEditEvidence = async (item: EvidenceItem) => {
+    setEditingEvidence(item)
+    setTitle(item.title)
+    setDescription(item.description || "")
+    setStandardName(item.standardName)
+    setCriteriaName(item.criteriaName)
+    setSelectedFiles(null)
+    setFileError(null)
+
+    const latestFields = await getFieldsAndCriteria()
+    if (latestFields && latestFields.length > 0) {
+      setFields(latestFields)
+    }
+
+    setModalOpened(true)
+  }
+
+  const handleDeleteEvidence = async (item: EvidenceItem) => {
+    if (window.confirm(`Bạn có chắc chắn muốn xóa minh chứng "${item.title}"?`)) {
+      const ok = await deleteEvidenceApi(item.id || item.evidenceId)
+      if (ok) {
+        setNotificationMessage("Đã xóa minh chứng thành công!")
+        await loadSummaryData(currentPage, searchQuery, statusFilter)
+        const latestFields = await getFieldsAndCriteria()
+        if (latestFields && latestFields.length > 0) {
+          setFields(latestFields)
+        }
+      } else {
+        setNotificationMessage("Xóa minh chứng không thành công. Vui lòng thử lại!")
+      }
+      setTimeout(() => setNotificationMessage(null), 4000)
+    }
+  }
+
+  const standardOptions = fields.map((f) => {
+    const blocked = isStandardBlocked(f)
+    let suffix = ""
+    if (blocked) {
+      suffix = " [🔒 Đã hoàn thành/Chờ duyệt]"
+    }
+    return {
+      value: f.fieldName,
+      label: `Tiêu chuẩn ${f.fieldCode}: ${f.fieldName}${suffix}`,
+      disabled: blocked
+    }
+  })
 
   const selectedFieldObj = fields.find((f) => f.fieldName === standardName) || fields[0]
-  const criteriaOptions = selectedFieldObj
+  const criteriaOptions = selectedFieldObj && selectedFieldObj.criteria
     ? selectedFieldObj.criteria.map((c) => {
-      const blocked = isCriterionBlocked(c.criteriaName)
+      const statusInfo = getCriterionBlockedStatus(c)
       let suffix = ""
-      if (blocked) {
-        const matching = teacherEvidences.find((e) => e.criteriaName === c.criteriaName)
-        const statusText = matching?.currentStatus === EvidenceStatusValues.APPROVED ? "Đã duyệt" : "Chờ duyệt"
-        suffix = ` [🔒 ${statusText}]`
+      if (statusInfo.blocked) {
+        suffix = ` [🔒 ${statusInfo.labelStatus}]`
       }
       return {
         value: c.criteriaName,
-        label: `${c.criteriaId}: ${c.criteriaName}${suffix}`
+        label: `${c.criteriaId}: ${c.criteriaName}${suffix}`,
+        disabled: statusInfo.blocked
       }
     })
     : []
@@ -369,13 +517,20 @@ export default function TeacherDashboard({
 
   const handleFormSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!title || !selectedFiles || selectedFiles.length === 0 || fileError) {
+    if (!title || (!editingEvidence && (!selectedFiles || selectedFiles.length === 0)) || fileError) {
       return
     }
 
-    if (isCriterionBlocked(criteriaName)) {
-      const matching = teacherEvidences.find((e) => e.criteriaName === criteriaName)
-      const statusText = matching?.currentStatus === EvidenceStatusValues.APPROVED ? "đã được phê duyệt" : "đang trong trạng thái chờ thẩm định"
+    if (!editingEvidence && isCriterionBlocked(criteriaName)) {
+      let statusText = "đã được duyệt hoặc đang chờ duyệt"
+      for (const f of fields) {
+        if (!f.criteria) continue
+        const c = f.criteria.find((crit) => crit.criteriaName === criteriaName || criteriaName.includes(crit.criteriaId))
+        if (c) {
+          const res = getCriterionBlockedStatus(c)
+          if (res.statusText) statusText = res.statusText
+        }
+      }
       setNotificationMessage(`Tiêu chí này ${statusText}. Vui lòng không nộp thêm minh chứng cho tiêu chí này!`)
       if (notificationTimeoutId) {
         clearTimeout(notificationTimeoutId)
@@ -400,20 +555,31 @@ export default function TeacherDashboard({
     formData.append("criteriaName", criteriaName)
     formData.append("criteriaId", criteriaId)
 
-    for (const file of selectedFiles) {
-      formData.append("files", file)
+    if (selectedFiles) {
+      for (const file of selectedFiles) {
+        formData.append("files", file)
+      }
     }
 
-    await onAddEvidence(formData)
+    if (editingEvidence) {
+      await updateEvidenceApi(editingEvidence.id || editingEvidence.evidenceId, formData)
+    } else {
+      await onAddEvidence(formData)
+    }
 
     // Reset form and reload API stats (reset page to 1 to show newly submitted evidence)
     setTitle("")
     setDescription("")
     setSelectedFiles(null)
     setFileError(null)
+    setEditingEvidence(null)
     setModalOpened(false)
     setCurrentPage(1)
     await loadSummaryData(1, searchQuery, statusFilter)
+    const latestFields = await getFieldsAndCriteria()
+    if (latestFields && latestFields.length > 0) {
+      setFields(latestFields)
+    }
   }
 
   const getStatusBadge = (status: EvidenceStatus) => {
@@ -455,7 +621,7 @@ export default function TeacherDashboard({
               color="emerald"
               radius="md"
               leftSection={<IconPlus size={18} />}
-              onClick={() => setModalOpened(true)}
+              onClick={handleOpenAddModal}
               className="shadow-lg hover:shadow-xl shrink-0"
             >
               Nộp Minh Chứng Mới
@@ -667,19 +833,47 @@ export default function TeacherDashboard({
                           <Table.Td>{getStatusBadge(item.currentStatus)}</Table.Td>
 
                           <Table.Td className="text-right">
-                            <Tooltip label="Xem chi tiết & nhận xét">
-                              <ActionIcon
-                                variant="light"
-                                color="blue"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedEvidence(item)
-                                  setShowPreview(false)
-                                }}
-                              >
-                                <IconEye size={16} />
-                              </ActionIcon>
-                            </Tooltip>
+                            <Group gap="xs" justify="end">
+                              <Tooltip label="Xem chi tiết & nhận xét">
+                                <ActionIcon
+                                  variant="light"
+                                  color="blue"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedEvidence(item)
+                                    setShowPreview(false)
+                                  }}
+                                >
+                                  <IconEye size={16} />
+                                </ActionIcon>
+                              </Tooltip>
+
+                              {item.currentStatus !== EvidenceStatusValues.APPROVED && (
+                                <Tooltip label="Chỉnh sửa / Bổ sung">
+                                  <ActionIcon
+                                    variant="light"
+                                    color="amber"
+                                    size="sm"
+                                    onClick={() => handleEditEvidence(item)}
+                                  >
+                                    <IconEdit size={16} />
+                                  </ActionIcon>
+                                </Tooltip>
+                              )}
+
+                              {item.currentStatus === EvidenceStatusValues.PENDING && (
+                                <Tooltip label="Xóa minh chứng">
+                                  <ActionIcon
+                                    variant="light"
+                                    color="red"
+                                    size="sm"
+                                    onClick={() => handleDeleteEvidence(item)}
+                                  >
+                                    <IconTrash size={16} />
+                                  </ActionIcon>
+                                </Tooltip>
+                              )}
+                            </Group>
                           </Table.Td>
                         </Table.Tr>
                       ))
@@ -717,7 +911,16 @@ export default function TeacherDashboard({
           </Tabs.Panel>
 
           <Tabs.Panel value="matrix">
-            <CriteriaMatrixTable evidences={evidences} />
+            <CriteriaMatrixTable
+              evidences={teacherEvidences}
+              onViewEvidence={(item) => {
+                setSelectedEvidence(item)
+                setShowPreview(false)
+              }}
+              onAddForCriterion={(std, crit) => handleOpenAddModalForCriterion(std, crit)}
+              onEditEvidence={(item) => handleEditEvidence(item)}
+              onDeleteEvidence={(item) => handleDeleteEvidence(item)}
+            />
           </Tabs.Panel>
         </Tabs>
       </main>
@@ -727,6 +930,7 @@ export default function TeacherDashboard({
         opened={modalOpened}
         onClose={() => {
           setModalOpened(false)
+          setEditingEvidence(null)
           setNotificationMessage(null)
           if (notificationTimeoutId) {
             clearTimeout(notificationTimeoutId)
@@ -735,7 +939,9 @@ export default function TeacherDashboard({
         title={
           <Group gap="xs">
             <IconFileUpload className="text-blue-900" size={20} />
-            <Text fw={700}>Nộp Minh Chứng Sư Phạm Mới</Text>
+            <Text fw={700}>
+              {editingEvidence ? "Chỉnh Sửa / Bổ Sung Minh Chứng" : "Nộp Minh Chứng Sư Phạm Mới"}
+            </Text>
           </Group>
         }
         radius="lg"
@@ -770,10 +976,21 @@ export default function TeacherDashboard({
             value={standardName}
             onChange={(val) => {
               if (val) {
-                setStandardName(val)
                 const fObj = fields.find((f) => f.fieldName === val)
-                if (fObj && fObj.criteria.length > 0) {
-                  const firstUnblocked = fObj.criteria.find(c => !isCriterionBlocked(c.criteriaName))
+                if (!editingEvidence && fObj && isStandardBlocked(fObj)) {
+                  setNotificationMessage("Tất cả các tiêu chí thuộc Tiêu chuẩn này đã được duyệt hoặc đang chờ duyệt. Vui lòng chọn Tiêu chuẩn khác!")
+                  if (notificationTimeoutId) {
+                    clearTimeout(notificationTimeoutId)
+                  }
+                  const timeoutId = setTimeout(() => {
+                    setNotificationMessage(null)
+                  }, 4000)
+                  setNotificationTimeoutId(timeoutId)
+                  return
+                }
+                setStandardName(val)
+                if (fObj && fObj.criteria && fObj.criteria.length > 0) {
+                  const firstUnblocked = fObj.criteria.find(c => !getCriterionBlockedStatus(c).blocked)
                   if (firstUnblocked) {
                     setCriteriaName(firstUnblocked.criteriaName)
                   } else {
@@ -790,9 +1007,16 @@ export default function TeacherDashboard({
             value={criteriaName}
             onChange={(val) => {
               if (val) {
-                if (isCriterionBlocked(val)) {
-                  const matching = teacherEvidences.find((e) => e.criteriaName === val)
-                  const statusText = matching?.currentStatus === EvidenceStatusValues.APPROVED ? "đã được duyệt" : "đang chờ duyệt"
+                if (!editingEvidence && isCriterionBlocked(val)) {
+                  let statusText = "đã được duyệt hoặc đang chờ duyệt"
+                  for (const f of fields) {
+                    if (!f.criteria) continue
+                    const c = f.criteria.find((crit) => crit.criteriaName === val || val.includes(crit.criteriaId))
+                    if (c) {
+                      const res = getCriterionBlockedStatus(c)
+                      if (res.statusText) statusText = res.statusText
+                    }
+                  }
                   setNotificationMessage(`Tiêu chí này ${statusText}. Vui lòng không nộp thêm minh chứng cho tiêu chí này!`)
                   if (notificationTimeoutId) {
                     clearTimeout(notificationTimeoutId)
@@ -811,7 +1035,7 @@ export default function TeacherDashboard({
           <FileInput
             label="Tệp minh chứng đính kèm (PDF, DOCX, JPG, PNG, TXT)"
             placeholder="Chọn một hoặc nhiều tệp minh chứng (tổng <= 5MB)..."
-            required
+            required={!editingEvidence}
             multiple
             clearable
             leftSection={<IconFileUpload size={16} />}
@@ -830,11 +1054,11 @@ export default function TeacherDashboard({
           />
 
           <div className="pt-3 flex justify-end space-x-2">
-            <Button variant="default" onClick={() => setModalOpened(false)}>
+            <Button variant="default" onClick={() => { setModalOpened(false); setEditingEvidence(null) }}>
               Hủy
             </Button>
             <Button type="submit" color="brand" leftSection={<IconCheck size={16} />}>
-              Lưu & Gửi Nộp
+              {editingEvidence ? "Cập Nhật Minh Chứng" : "Lưu & Gửi Nộp"}
             </Button>
           </div>
         </form>
@@ -863,6 +1087,13 @@ export default function TeacherDashboard({
               <Text size="xs" c="dimmed">Tên minh chứng:</Text>
               <Text fw={700} size="sm" className="text-slate-900">{selectedEvidence.title}</Text>
             </div>
+
+            {selectedEvidence.description && (
+              <div>
+                <Text size="xs" c="dimmed">Mô tả chi tiết:</Text>
+                <Text size="sm" className="text-slate-700 whitespace-pre-line bg-slate-50 p-2.5 rounded-md border border-slate-100">{selectedEvidence.description}</Text>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div>

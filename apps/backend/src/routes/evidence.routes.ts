@@ -130,6 +130,7 @@ const formatEvidenceItem = (e: any, fallbackUser?: any) => {
       email: e.submittedBy?.email || fallbackUser?.email || "",
       departmentName: e.submittedBy?.departmentName || fallbackUser?.departmentName || "Tổng hợp",
     },
+    reviewComment: e.reviewComment || "",
   };
 };
 
@@ -739,6 +740,7 @@ router.patch("/:id/status", authenticateToken, authorizeRoles(UserRole.DEPARTMEN
 
     if (dbEvidence) {
       dbEvidence.currentStatus = status;
+      dbEvidence.reviewComment = reviewComment || "";
       await dbEvidence.save();
 
       // Cập nhật trạng thái tiêu chí tương ứng trong Field
@@ -784,6 +786,152 @@ router.patch("/:id/status", authenticateToken, authorizeRoles(UserRole.DEPARTMEN
     }
 
     return res.status(404).json({ success: false, message: "Không tìm thấy hồ sơ minh chứng!" });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * DELETE /api/evidences/:id
+ * Xóa minh chứng
+ */
+router.delete("/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+
+    let dbEvidence = null;
+    try {
+      if (Types.ObjectId.isValid(id)) {
+        dbEvidence = await Evidence.findById(id);
+      }
+      if (!dbEvidence) {
+        dbEvidence = await Evidence.findOne({ evidenceId: id });
+      }
+    } catch {
+      dbEvidence = null;
+    }
+
+    if (dbEvidence) {
+      if (dbEvidence.fieldId && dbEvidence.criterionId) {
+        const field = await Field.findById(dbEvidence.fieldId);
+        if (field) {
+          const criterion = field.criteria.find((c: any) => c._id.toString() === dbEvidence.criterionId.toString());
+          if (criterion) {
+            criterion.status = "incomplete";
+            await field.save();
+          }
+        }
+      }
+      await Evidence.findByIdAndDelete(dbEvidence._id);
+
+      const dbUser = await User.findById(user?.mongoId || user?.userId);
+      if (dbUser && dbUser.evidences) {
+        dbUser.evidences = dbUser.evidences.filter((evId: any) => evId.toString() !== dbEvidence!._id.toString());
+        await dbUser.save();
+      }
+
+      return res.status(200).json({ success: true, message: "Xóa minh chứng thành công!" });
+    }
+
+    const itemIndex = inMemoryEvidences.findIndex((e) => e.id === id || e.evidenceId === id);
+    if (itemIndex !== -1) {
+      inMemoryEvidences.splice(itemIndex, 1);
+      return res.status(200).json({ success: true, message: "Xóa minh chứng thành công!" });
+    }
+
+    return res.status(404).json({ success: false, message: "Không tìm thấy minh chứng để xóa!" });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * PUT /api/evidences/:id
+ * Chỉnh sửa / Bổ sung minh chứng
+ */
+router.put("/:id", authenticateToken, upload.array("files", 10), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { title, description } = req.body;
+    const files = req.files as Express.Multer.File[];
+
+    let dbEvidence = null;
+    try {
+      if (Types.ObjectId.isValid(id)) {
+        dbEvidence = await Evidence.findById(id);
+      }
+      if (!dbEvidence) {
+        dbEvidence = await Evidence.findOne({ evidenceId: id });
+      }
+    } catch {
+      dbEvidence = null;
+    }
+
+    let r2Result = { fileNames: "", fileFormats: "", totalSize: 0, urlFile: "#" };
+    if (files && files.length > 0) {
+      r2Result = await uploadMultipleFilesToR2(files);
+    }
+
+    if (dbEvidence) {
+      if (title) dbEvidence.title = title;
+      if (description !== undefined) dbEvidence.description = description;
+      dbEvidence.currentStatus = EvidenceStatus.PENDING;
+
+      if (files && files.length > 0 && r2Result.urlFile !== "#") {
+        dbEvidence.originalFileName = r2Result.fileNames;
+        dbEvidence.fileFormat = r2Result.fileFormats;
+        dbEvidence.fileSize = r2Result.totalSize;
+        dbEvidence.urlFile = r2Result.urlFile;
+      }
+
+      await dbEvidence.save();
+
+      if (dbEvidence.fieldId && dbEvidence.criterionId) {
+        const field = await Field.findById(dbEvidence.fieldId);
+        if (field) {
+          const criterion = field.criteria.find((c: any) => c._id.toString() === dbEvidence.criterionId.toString());
+          if (criterion) {
+            criterion.status = "pending";
+            await field.save();
+          }
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Cập nhật minh chứng thành công!",
+        evidence: {
+          id: dbEvidence._id.toString(),
+          evidenceId: dbEvidence.evidenceId,
+          title: dbEvidence.title,
+          description: dbEvidence.description,
+          currentStatus: dbEvidence.currentStatus
+        }
+      });
+    }
+
+    const itemIndex = inMemoryEvidences.findIndex((e) => e.id === id || e.evidenceId === id);
+    if (itemIndex !== -1) {
+      if (title) inMemoryEvidences[itemIndex].title = title;
+      if (description !== undefined) inMemoryEvidences[itemIndex].description = description;
+      inMemoryEvidences[itemIndex].currentStatus = EvidenceStatus.PENDING;
+
+      if (files && files.length > 0 && r2Result.urlFile !== "#") {
+        inMemoryEvidences[itemIndex].originalFileName = r2Result.fileNames;
+        inMemoryEvidences[itemIndex].fileFormat = r2Result.fileFormats;
+        inMemoryEvidences[itemIndex].fileSize = r2Result.totalSize;
+        inMemoryEvidences[itemIndex].urlFile = r2Result.urlFile;
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Cập nhật minh chứng thành công!",
+        evidence: inMemoryEvidences[itemIndex]
+      });
+    }
+
+    return res.status(404).json({ success: false, message: "Không tìm thấy minh chứng để cập nhật!" });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }

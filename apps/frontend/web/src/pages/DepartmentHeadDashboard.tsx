@@ -471,6 +471,17 @@ export default function DepartmentHeadDashboard({
               </Text>
             </div>
 
+            {selectedEvidence.description && (
+              <div>
+                <Text size="xs" fw={600} className="mb-1 text-slate-800">
+                  Mô tả chi tiết:
+                </Text>
+                <Text size="sm" className="p-3 bg-slate-50 border border-slate-200 rounded-md text-slate-700 whitespace-pre-line">
+                  {selectedEvidence.description}
+                </Text>
+              </div>
+            )}
+
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
               <div className="flex justify-between items-center text-xs">
                 <Text size="xs" c="dimmed">Tệp đính kèm:</Text>

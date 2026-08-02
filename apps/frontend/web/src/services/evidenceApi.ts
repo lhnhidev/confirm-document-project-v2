@@ -2,8 +2,10 @@ import type { EvidenceItem, EvidenceStatus } from "../types/auth"
 import { getToken } from "./authApi"
 
 export interface CriterionItem {
+  _id?: string
   criteriaId: string
   criteriaName: string
+  status?: string
 }
 
 export interface FieldItem {
@@ -252,6 +254,48 @@ export async function updateEvidenceStatusApi(
     return response.ok
   } catch (err) {
     console.error("❌ Error updating evidence status in backend API:", err)
+    return false
+  }
+}
+
+/**
+ * Backend API Call: Xóa minh chứng
+ */
+export async function deleteEvidenceApi(id: string): Promise<boolean> {
+  const token = getToken()
+  try {
+    const response = await fetch(`/api/evidences/${id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+    return response.ok
+  } catch (err) {
+    console.error("❌ Error deleting evidence in backend API:", err)
+    return false
+  }
+}
+
+/**
+ * Backend API Call: Chỉnh sửa / Bổ sung nội dung minh chứng
+ */
+export async function updateEvidenceApi(
+  id: string,
+  payload: FormData
+): Promise<boolean> {
+  const token = getToken()
+  try {
+    const response = await fetch(`/api/evidences/${id}`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: payload
+    })
+    return response.ok
+  } catch (err) {
+    console.error("❌ Error updating evidence content in backend API:", err)
     return false
   }
 }

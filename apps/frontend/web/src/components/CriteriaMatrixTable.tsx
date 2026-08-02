@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, Fragment } from "react"
-import { Table, Paper, Title, Text, Button, Loader } from "@mantine/core"
-import { IconSparkles, IconRefresh } from "@tabler/icons-react"
+import { Table, Paper, Title, Text, Button, Loader, ActionIcon, Tooltip, Group } from "@mantine/core"
+import { IconSparkles, IconRefresh, IconEye, IconEdit, IconTrash, IconPlus, IconFileUpload } from "@tabler/icons-react"
 import { getFieldsAndCriteria, type FieldItem } from "../services/evidenceApi"
 import { EvidenceStatus } from "../types/auth"
 import type { EvidenceItem } from "../types/auth"
@@ -99,11 +99,26 @@ const FRONTEND_FALLBACK_FIELDS: FieldItem[] = [
   }
 ]
 
+/* eslint-disable no-unused-vars */
+type EvidenceItemHandler = (evidence: EvidenceItem) => void
+type CriterionAddHandler = (standardName: string, criteriaName: string) => void
+/* eslint-enable no-unused-vars */
+
 interface CriteriaMatrixTableProps {
   evidences: EvidenceItem[]
+  onViewEvidence?: EvidenceItemHandler
+  onAddForCriterion?: CriterionAddHandler
+  onEditEvidence?: EvidenceItemHandler
+  onDeleteEvidence?: EvidenceItemHandler
 }
 
-export default function CriteriaMatrixTable({ evidences }: CriteriaMatrixTableProps) {
+export default function CriteriaMatrixTable({
+  evidences,
+  onViewEvidence,
+  onAddForCriterion,
+  onEditEvidence,
+  onDeleteEvidence
+}: CriteriaMatrixTableProps) {
   const [fields, setFields] = useState<FieldItem[]>(FRONTEND_FALLBACK_FIELDS)
   const [loading, setLoading] = useState(true)
 
@@ -135,10 +150,9 @@ export default function CriteriaMatrixTable({ evidences }: CriteriaMatrixTablePr
     }
   }, [evidences])
 
-  // Get status of a criteria based on submitted evidences
-  const getCriteriaStatus = (criteriaId: string, criteriaName: string): "not_started" | "submitted" | "confirmed" | "completed" => {
-    const matched = evidences.filter((e) => {
-      if (!e.criteriaName) {
+  const getMatchedEvidence = (criteriaId: string, criteriaName: string): EvidenceItem | undefined => {
+    return evidences.find((e) => {
+      if (!e || !e.criteriaName) {
         return false
       }
       const matchId = e.criteriaName.includes(criteriaId) || criteriaId.includes(e.criteriaName)
@@ -147,21 +161,32 @@ export default function CriteriaMatrixTable({ evidences }: CriteriaMatrixTablePr
         e.criteriaName.toLowerCase().includes(criteriaName.toLowerCase())
       return matchId || matchName
     })
+  }
 
-    if (matched.length === 0) {
-      return "not_started"
+  // Get status of a criteria based on submitted evidences
+  const getCriteriaStatus = (c: { criteriaId: string; criteriaName: string; status?: string }): "not_started" | "submitted" | "confirmed" | "completed" => {
+    const matched = getMatchedEvidence(c.criteriaId, c.criteriaName)
+
+    if (matched) {
+      if (matched.currentStatus === EvidenceStatus.APPROVED) {
+        return "completed"
+      }
+      if (matched.currentStatus === EvidenceStatus.NEEDS_SUPPLEMENT) {
+        return "confirmed"
+      }
+      if (matched.currentStatus === EvidenceStatus.PENDING) {
+        return "submitted"
+      }
     }
 
-    if (matched.some((e) => e.currentStatus === EvidenceStatus.APPROVED)) {
+    if (c.status === "approved" || c.status === "APPROVED") {
       return "completed"
     }
-
-    if (matched.some((e) => e.currentStatus === EvidenceStatus.NEEDS_SUPPLEMENT)) {
-      return "confirmed"
-    }
-
-    if (matched.some((e) => e.currentStatus === EvidenceStatus.PENDING)) {
+    if (c.status === "pending" || c.status === "PENDING") {
       return "submitted"
+    }
+    if (c.status === "rejected" || c.status === "REJECTED") {
+      return "confirmed"
     }
 
     return "not_started"
@@ -210,7 +235,8 @@ export default function CriteriaMatrixTable({ evidences }: CriteriaMatrixTablePr
               <Table.Tr>
                 <Table.Th className="w-16 text-center text-white bg-slate-900">MÃ / STT</Table.Th>
                 <Table.Th className="text-white bg-slate-900">NỘI DUNG ĐÁNH GIÁ</Table.Th>
-                <Table.Th className="w-[420px] text-center text-white bg-slate-900">TRẠNG THÁI TIÊU CHÍ</Table.Th>
+                <Table.Th className="w-[180px] text-center text-white bg-slate-900">TRẠNG THÁI TIÊU CHÍ</Table.Th>
+                <Table.Th className="w-[200px] text-center text-white bg-slate-900">THAO TÁC</Table.Th>
               </Table.Tr>
             </Table.Thead>
 
@@ -221,7 +247,7 @@ export default function CriteriaMatrixTable({ evidences }: CriteriaMatrixTablePr
 
                 if (field.criteria) {
                   field.criteria.forEach((c) => {
-                    if (getCriteriaStatus(c.criteriaId, c.criteriaName) === "completed") {
+                    if (getCriteriaStatus(c) === "completed") {
                       fieldCompletedCount++
                     }
                   })
@@ -234,14 +260,15 @@ export default function CriteriaMatrixTable({ evidences }: CriteriaMatrixTablePr
                     {/* Field Row */}
                     <Table.Tr className="bg-blue-100/80 font-extrabold text-blue-950 text-sm border-t-2 border-blue-200">
                       <Table.Td className="text-center font-extrabold text-blue-900">{field.fieldCode}</Table.Td>
-                      <Table.Td className="uppercase font-extrabold tracking-wide text-blue-950" colSpan={2}>
+                      <Table.Td className="uppercase font-extrabold tracking-wide text-blue-950" colSpan={3}>
                         {field.fieldName}
                       </Table.Td>
                     </Table.Tr>
 
                     {/* Criteria Rows */}
                     {field.criteria && field.criteria.map((c) => {
-                      const status = getCriteriaStatus(c.criteriaId, c.criteriaName)
+                      const status = getCriteriaStatus(c)
+                      const matchedEvidence = getMatchedEvidence(c.criteriaId, c.criteriaName)
 
                       return (
                         <Table.Tr key={c.criteriaId} className="hover:bg-blue-50/40 transition-colors">
@@ -276,6 +303,126 @@ export default function CriteriaMatrixTable({ evidences }: CriteriaMatrixTablePr
                               </span>
                             )}
                           </Table.Td>
+
+                          <Table.Td className="text-center">
+                            <Group gap="xs" justify="center">
+                              {/* 1. Chưa thực hiện */}
+                              {status === "not_started" && (
+                                <Button
+                                  size="xs"
+                                  color="emerald"
+                                  variant="light"
+                                  leftSection={<IconPlus size={13} />}
+                                  onClick={() => onAddForCriterion?.(field.fieldName, c.criteriaName)}
+                                >
+                                  Nộp minh chứng
+                                </Button>
+                              )}
+
+                              {/* 2. Chờ duyệt */}
+                              {status === "submitted" && (
+                                <>
+                                  {matchedEvidence && (
+                                    <Tooltip label="Xem minh chứng">
+                                      <ActionIcon
+                                        variant="light"
+                                        color="blue"
+                                        size="sm"
+                                        onClick={() => onViewEvidence?.(matchedEvidence)}
+                                      >
+                                        <IconEye size={15} />
+                                      </ActionIcon>
+                                    </Tooltip>
+                                  )}
+                                  {matchedEvidence && (
+                                    <Tooltip label="Chỉnh sửa minh chứng">
+                                      <ActionIcon
+                                        variant="light"
+                                        color="amber"
+                                        size="sm"
+                                        onClick={() => onEditEvidence?.(matchedEvidence)}
+                                      >
+                                        <IconEdit size={15} />
+                                      </ActionIcon>
+                                    </Tooltip>
+                                  )}
+                                  {matchedEvidence && (
+                                    <Tooltip label="Xóa minh chứng">
+                                      <ActionIcon
+                                        variant="light"
+                                        color="red"
+                                        size="sm"
+                                        onClick={() => onDeleteEvidence?.(matchedEvidence)}
+                                      >
+                                        <IconTrash size={15} />
+                                      </ActionIcon>
+                                    </Tooltip>
+                                  )}
+                                </>
+                              )}
+
+                              {/* 3. Cần bổ sung */}
+                              {status === "confirmed" && (
+                                <>
+                                  {matchedEvidence && (
+                                    <Tooltip label="Xem minh chứng">
+                                      <ActionIcon
+                                        variant="light"
+                                        color="blue"
+                                        size="sm"
+                                        onClick={() => onViewEvidence?.(matchedEvidence)}
+                                      >
+                                        <IconEye size={15} />
+                                      </ActionIcon>
+                                    </Tooltip>
+                                  )}
+                                  <Button
+                                    size="xs"
+                                    color="orange"
+                                    variant="light"
+                                    leftSection={<IconFileUpload size={13} />}
+                                    onClick={() => {
+                                      if (matchedEvidence) {
+                                        onEditEvidence?.(matchedEvidence)
+                                      } else {
+                                        onAddForCriterion?.(field.fieldName, c.criteriaName)
+                                      }
+                                    }}
+                                  >
+                                    Bổ sung
+                                  </Button>
+                                </>
+                              )}
+
+                              {/* 4. Đã duyệt */}
+                              {status === "completed" && (
+                                <>
+                                  {matchedEvidence ? (
+                                    <Tooltip label="Xem minh chứng">
+                                      <ActionIcon
+                                        variant="light"
+                                        color="blue"
+                                        size="sm"
+                                        onClick={() => onViewEvidence?.(matchedEvidence)}
+                                      >
+                                        <IconEye size={15} />
+                                      </ActionIcon>
+                                    </Tooltip>
+                                  ) : (
+                                    <Button
+                                      size="xs"
+                                      variant="subtle"
+                                      color="blue"
+                                      leftSection={<IconEye size={13} />}
+                                      onClick={() => onAddForCriterion?.(field.fieldName, c.criteriaName)}
+                                    >
+                                      Xem
+                                    </Button>
+                                  )}
+                                </>
+                              )}
+                            </Group>
+                          </Table.Td>
                         </Table.Tr>
                       )
                     })}
@@ -288,7 +435,7 @@ export default function CriteriaMatrixTable({ evidences }: CriteriaMatrixTablePr
                       <Table.Td className="font-bold text-slate-800">
                         Kết quả đánh giá Lĩnh vực {field.fieldCode}: <span className="font-semibold text-slate-600">{field.fieldName}</span>
                       </Table.Td>
-                      <Table.Td className="text-center">
+                      <Table.Td className="text-center" colSpan={2}>
                         <div className="inline-flex items-center justify-center space-x-2 bg-emerald-50 text-emerald-900 px-3 py-1 rounded-md border border-emerald-300 font-bold text-xs shadow-2xs">
                           <span>Hoàn thành/Tổng: {fieldCompletedCount}/{fieldTotalCriteria} tiêu chí ({fieldPercent}%)</span>
                         </div>
