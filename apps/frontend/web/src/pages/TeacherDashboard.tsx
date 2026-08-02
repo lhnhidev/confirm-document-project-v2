@@ -43,12 +43,14 @@ import {
   IconDownload,
   IconExternalLink,
   IconEdit,
-  IconTrash
+  IconTrash,
+  IconUsers
 } from "@tabler/icons-react"
 import type { User, EvidenceItem, EvidenceStatus } from "../types/auth"
 import { EvidenceStatus as EvidenceStatusValues } from "../types/auth"
 import AppHeader from "../components/AppHeader"
 import CriteriaMatrixTable from "../components/CriteriaMatrixTable"
+import UserContactsTab from "../components/UserContactsTab"
 import { getTeacherSummaryApi, getMySupplementCountApi, getFieldsAndCriteria, deleteEvidenceApi, updateEvidenceApi, type TeacherSummaryData, type PaginationInfo, type FieldItem } from "../services/evidenceApi"
 
 const FRONTEND_FALLBACK_FIELDS: FieldItem[] = [
@@ -841,6 +843,9 @@ export default function TeacherDashboard({
             <Tabs.Tab value="matrix" leftSection={<IconTable size={16} />} className="font-bold text-blue-900">
               8 Tiêu Chuẩn & 35 Tiêu Chí (Khung Đánh Giá)
             </Tabs.Tab>
+            <Tabs.Tab value="contacts" leftSection={<IconUsers size={16} />} className="font-bold text-teal-900">
+              Danh Bạ Người Dùng
+            </Tabs.Tab>
           </Tabs.List>
 
           <Tabs.Panel value="evidences">
@@ -1036,6 +1041,10 @@ export default function TeacherDashboard({
               onEditEvidence={(item) => handleEditEvidence(item)}
               onDeleteEvidence={(item) => handleDeleteEvidence(item)}
             />
+          </Tabs.Panel>
+
+          <Tabs.Panel value="contacts" className="pt-4">
+            <UserContactsTab />
           </Tabs.Panel>
         </Tabs>
       </main>

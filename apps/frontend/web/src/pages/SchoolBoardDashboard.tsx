@@ -23,13 +23,15 @@ import {
   IconDownload,
   IconTable,
   IconChartPie,
-  IconListCheck
+  IconListCheck,
+  IconUsers
 } from "@tabler/icons-react"
 import type { User, EvidenceItem } from "../types/auth"
 import { EvidenceStatus as EvidenceStatusValues } from "../types/auth"
 import AppHeader from "../components/AppHeader"
 import CriteriaMatrixTable from "../components/CriteriaMatrixTable"
 import TeacherProgressStatsView from "../components/TeacherProgressStatsView"
+import UserContactsTab from "../components/UserContactsTab"
 
 interface SchoolBoardDashboardProps {
   currentUser: User
@@ -216,6 +218,9 @@ export default function SchoolBoardDashboard({
             <Tabs.Tab value="matrix" leftSection={<IconTable size={16} />} className="font-bold text-blue-900">
               8 Tiêu Chuẩn & 35 Tiêu Chí (Khung Đánh Giá)
             </Tabs.Tab>
+            <Tabs.Tab value="contacts" leftSection={<IconUsers size={16} />} className="font-bold text-teal-900">
+              Danh Bạ Người Dùng
+            </Tabs.Tab>
           </Tabs.List>
 
           <Tabs.Panel value="overview" className="space-y-6">
@@ -385,6 +390,10 @@ export default function SchoolBoardDashboard({
 
           <Tabs.Panel value="matrix">
             <CriteriaMatrixTable evidences={evidences} />
+          </Tabs.Panel>
+
+          <Tabs.Panel value="contacts" className="pt-4">
+            <UserContactsTab />
           </Tabs.Panel>
         </Tabs>
       </main>

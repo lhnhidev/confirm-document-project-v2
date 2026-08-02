@@ -36,6 +36,7 @@ import { EvidenceStatus as EvidenceStatusValues } from "../types/auth"
 import AppHeader from "../components/AppHeader"
 import CriteriaMatrixTable from "../components/CriteriaMatrixTable"
 import TeacherProgressStatsView from "../components/TeacherProgressStatsView"
+import UserContactsTab from "../components/UserContactsTab"
 
 interface DepartmentHeadDashboardProps {
   currentUser: User
@@ -267,6 +268,14 @@ export default function DepartmentHeadDashboard({
                 >
                   8 Tiêu Chuẩn & 35 Tiêu Chí
                 </Tabs.Tab>
+
+                <Tabs.Tab
+                  value="contacts"
+                  leftSection={<IconUsers size={16} />}
+                  className="font-semibold text-sm text-teal-900"
+                >
+                  Danh Bạ Người Dùng
+                </Tabs.Tab>
               </Tabs.List>
 
               {activeTab !== "teachers" && (
@@ -434,6 +443,10 @@ export default function DepartmentHeadDashboard({
 
             <Tabs.Panel value="matrix" className="pt-4">
               <CriteriaMatrixTable evidences={evidences} />
+            </Tabs.Panel>
+
+            <Tabs.Panel value="contacts" className="pt-4">
+              <UserContactsTab />
             </Tabs.Panel>
           </Tabs>
         </Paper>

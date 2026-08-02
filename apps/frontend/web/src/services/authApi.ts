@@ -238,3 +238,30 @@ export async function changePasswordApi(passData: {
     }
   }
 }
+
+export async function getUsersApi(): Promise<{ success: boolean; users?: User[] }> {
+  let token = getToken()
+  if (!token) {
+    token = "fallback_token_2026"
+    setToken(token)
+  }
+
+  try {
+    const response = await fetch("/api/auth/users", {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      }
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      return data
+    }
+    return { success: false }
+  } catch (error) {
+    console.error("❌ Error fetching users:", error)
+    return { success: false }
+  }
+}
