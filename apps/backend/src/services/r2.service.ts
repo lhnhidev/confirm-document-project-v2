@@ -1,4 +1,4 @@
-import { S3Client, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, ListObjectsV2Command, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 let s3Client: S3Client | null = null;
 
@@ -131,4 +131,47 @@ export async function uploadFilesToR2(
     fileFormats: fileFormatsArr[0] || "application/pdf",
     totalSize: totalSize || 1024000,
   };
+}
+
+/**
+ * Deletes file from Cloudflare R2 bucket
+ */
+export async function deleteFileFromR2(urlFile?: string): Promise<boolean> {
+  if (!urlFile || urlFile === "#") return false;
+  const client = getS3Client();
+  const bucketName = process.env.R2_BUCKET_NAME || process.env.CLOUDFLARE_R2_BUCKET_NAME || "confirm-documents";
+
+  if (!client) {
+    console.log(`[Cloudflare R2 Simulation] Delete file simulated for URL: ${urlFile}`);
+    return true;
+  }
+
+  try {
+    let key = "";
+    try {
+      const parsed = new URL(urlFile);
+      let pathname = parsed.pathname.startsWith("/") ? parsed.pathname.slice(1) : parsed.pathname;
+      if (pathname.startsWith(`${bucketName}/`)) {
+        key = pathname.slice(bucketName.length + 1);
+      } else {
+        key = pathname;
+      }
+    } catch {
+      key = urlFile;
+    }
+
+    if (key) {
+      await client.send(
+        new DeleteObjectCommand({
+          Bucket: bucketName,
+          Key: key,
+        })
+      );
+      console.log(`✅ Deleted object ${key} from Cloudflare R2 bucket ${bucketName}`);
+      return true;
+    }
+  } catch (err) {
+    console.error("❌ Cloudflare R2 Delete Error:", err);
+  }
+  return false;
 }

@@ -15,6 +15,7 @@ export interface IUser extends Document {
   phoneNumber?: string;
   departmentName?: string;
   password: string;
+  rawPassword?: string;
   fields?: Types.ObjectId[]; // Ref -> Field (Quan hệ 1 - 8 với Field theo cdm.pu)
   evidences?: Types.ObjectId[]; // Ref -> Evidence (Quan hệ 1 - n với Evidence)
   createdAt: Date;
@@ -46,6 +47,7 @@ const userSchema = new Schema<IUser>(
     phoneNumber: { type: String, trim: true },
     departmentName: { type: String, trim: true },
     password: { type: String, required: true, select: false }, // Hide password by default
+    rawPassword: { type: String, trim: true, select: false },
     fields: [{ type: Schema.Types.ObjectId, ref: "Field" }],
     evidences: [{ type: Schema.Types.ObjectId, ref: "Evidence" }],
   },

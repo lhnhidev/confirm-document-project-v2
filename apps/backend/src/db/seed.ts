@@ -105,8 +105,8 @@ async function seedData() {
           fieldCode: template.fieldCode,
           fieldName: template.fieldName,
           percent: 0,
-          criteria: template.criteria,
-          user: user._id,
+          criteria: template.criteria as any,
+          user: user._id as any,
         });
         createdFieldIds.push(createdField._id as Types.ObjectId);
         createdFieldsMap[template.fieldCode] = createdField;

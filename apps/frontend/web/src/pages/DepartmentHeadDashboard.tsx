@@ -42,13 +42,15 @@ interface DepartmentHeadDashboardProps {
   evidences: EvidenceItem[]
   onUpdateStatus: (_id: string, _status: EvidenceStatus, _comment?: string) => void
   onLogout: () => void
+  onUserUpdate?: (_updatedUser: User) => void
 }
 
 export default function DepartmentHeadDashboard({
   currentUser,
   evidences,
   onUpdateStatus,
-  onLogout
+  onLogout,
+  onUserUpdate
 }: DepartmentHeadDashboardProps) {
   const [activeTab, setActiveTab] = useState<string>("pending")
   const [searchQuery, setSearchQuery] = useState("")
@@ -128,7 +130,7 @@ export default function DepartmentHeadDashboard({
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans pb-12">
-      <AppHeader currentUser={currentUser} onLogout={onLogout} />
+      <AppHeader currentUser={currentUser} onLogout={onLogout} onUserUpdate={onUserUpdate} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Banner Welcome Card */}
@@ -531,12 +533,30 @@ export default function DepartmentHeadDashboard({
                   
                   <div className="overflow-hidden flex justify-center bg-white rounded-md border border-slate-200 p-2 min-h-[250px]">
                     {(() => {
-                      const format = selectedEvidence.fileFormat ? selectedEvidence.fileFormat.toLowerCase() : ""
+                      const getExtension = () => {
+                        if (selectedEvidence.originalFileName) {
+                          const parts = selectedEvidence.originalFileName.split(".")
+                          if (parts.length > 1) {
+                            const extension = parts.pop()?.toLowerCase() || ""
+                            if (extension) return extension
+                          }
+                        }
+                        const rawFormat = selectedEvidence.fileFormat ? selectedEvidence.fileFormat.toLowerCase() : ""
+                        if (rawFormat.includes("/")) {
+                          const subType = rawFormat.split("/")[1]
+                          if (subType.includes("word") || subType.includes("document")) return "docx"
+                          if (subType.includes("sheet") || subType.includes("excel") || subType === "xlsx" || subType === "xls") return "xlsx"
+                          if (subType.includes("presentation") || subType.includes("powerpoint") || subType === "pptx" || subType === "ppt") return "pptx"
+                          return subType
+                        }
+                        return rawFormat.replace(/^\./, "")
+                      }
+                      const ext = getExtension()
                       const url = selectedEvidence.urlFile
                       if (!url || url === "#") {
                         return <Text size="xs" c="red" className="text-center my-auto">Không tìm thấy đường dẫn tệp tin thực tế.</Text>
                       }
-                      if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(format)) {
+                      if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) {
                         return (
                           <img 
                             src={url} 
@@ -544,7 +564,7 @@ export default function DepartmentHeadDashboard({
                             className="max-h-[350px] object-contain rounded" 
                           />
                         )
-                      } else if (format === "pdf") {
+                      } else if (ext === "pdf") {
                         return (
                           <iframe 
                             src={url} 
@@ -552,7 +572,7 @@ export default function DepartmentHeadDashboard({
                             className="w-full h-[400px] border-0" 
                           />
                         )
-                      } else if (["docx", "doc", "xlsx", "xls", "pptx", "ppt"].includes(format)) {
+                      } else if (["docx", "doc", "xlsx", "xls", "pptx", "ppt"].includes(ext)) {
                         return (
                           <div className="w-full space-y-2">
                             <iframe 
@@ -569,7 +589,7 @@ export default function DepartmentHeadDashboard({
                         return (
                           <div className="text-center my-auto p-4 space-y-2">
                             <IconFileText size={40} className="text-slate-400 mx-auto" />
-                            <Text size="xs" c="dimmed">Không hỗ trợ xem trước trực tiếp định dạng này ({format.toUpperCase()}).</Text>
+                            <Text size="xs" c="dimmed">Không hỗ trợ xem trước trực tiếp định dạng này ({ext.toUpperCase()}).</Text>
                             <Button 
                               size="xs" 
                               variant="light" 

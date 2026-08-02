@@ -115,6 +115,10 @@ const App = () => {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />
   }
 
+  const handleUserUpdate = (updatedUser: User) => {
+    setCurrentUser(updatedUser)
+  }
+
   switch (currentUser.role) {
   case UserRole.TEACHER:
     return (
@@ -123,6 +127,7 @@ const App = () => {
         evidences={evidences}
         onAddEvidence={handleAddEvidence}
         onLogout={handleLogout}
+        onUserUpdate={handleUserUpdate}
       />
     )
 
@@ -133,6 +138,7 @@ const App = () => {
         evidences={evidences}
         onUpdateStatus={handleUpdateStatus}
         onLogout={handleLogout}
+        onUserUpdate={handleUserUpdate}
       />
     )
 
@@ -142,6 +148,7 @@ const App = () => {
         currentUser={currentUser}
         evidences={evidences}
         onLogout={handleLogout}
+        onUserUpdate={handleUserUpdate}
       />
     )
 

@@ -141,8 +141,8 @@ export async function syncFieldsToDatabase() {
             fieldCode: template.fieldCode,
             fieldName: template.fieldName,
             percent: template.percent,
-            criteria: template.criteria,
-            user: user._id
+            criteria: template.criteria as any,
+            user: user._id as any
           });
           createdFieldIds.push(createdField._id as Types.ObjectId);
         }
@@ -157,6 +157,20 @@ export async function syncFieldsToDatabase() {
           user.fields = fieldIds;
           await user.save();
         }
+      }
+
+      // Đảm bảo các tiêu chí trong field của cán bộ Tống Thị Tuyết Huệ có status là "incomplete" và percent = 0
+      if (user.fullName?.includes("Tống Thị Tuyết Huệ") || user.email === "ttthuedtnt@gmail.com") {
+        for (const f of existingFields) {
+          if (f.criteria && f.criteria.length > 0) {
+            f.criteria.forEach((c: any) => {
+              c.status = "incomplete";
+            });
+            f.percent = 0;
+            await f.save();
+          }
+        }
+        console.log(`  🔄 Đã reset tất cả tiêu chí về trạng thái chưa hoàn thành cho cán bộ: ${user.fullName}`);
       }
     }
 

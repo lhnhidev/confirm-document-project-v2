@@ -19,7 +19,8 @@ import {
   Card,
   Alert,
   Tabs,
-  Pagination
+  Pagination,
+  Transition
 } from "@mantine/core"
 import {
   IconFileUpload,
@@ -48,7 +49,7 @@ import type { User, EvidenceItem, EvidenceStatus } from "../types/auth"
 import { EvidenceStatus as EvidenceStatusValues } from "../types/auth"
 import AppHeader from "../components/AppHeader"
 import CriteriaMatrixTable from "../components/CriteriaMatrixTable"
-import { getTeacherSummaryApi, getFieldsAndCriteria, deleteEvidenceApi, updateEvidenceApi, type TeacherSummaryData, type PaginationInfo, type FieldItem } from "../services/evidenceApi"
+import { getTeacherSummaryApi, getMySupplementCountApi, getFieldsAndCriteria, deleteEvidenceApi, updateEvidenceApi, type TeacherSummaryData, type PaginationInfo, type FieldItem } from "../services/evidenceApi"
 
 const FRONTEND_FALLBACK_FIELDS: FieldItem[] = [
   {
@@ -149,13 +150,15 @@ interface TeacherDashboardProps {
   evidences: EvidenceItem[]
   onAddEvidence: (_payload: FormData) => void
   onLogout: () => void
+  onUserUpdate?: (_updatedUser: User) => void
 }
 
 export default function TeacherDashboard({
   currentUser,
   evidences,
   onAddEvidence,
-  onLogout
+  onLogout,
+  onUserUpdate
 }: TeacherDashboardProps) {
   const [modalOpened, setModalOpened] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -172,7 +175,9 @@ export default function TeacherDashboard({
 
   // API Backend states with Pagination
   const [loadingApi, setLoadingApi] = useState(true)
+  const [isApiLoaded, setIsApiLoaded] = useState(false)
   const [apiSummary, setApiSummary] = useState<TeacherSummaryData | null>(null)
+  const [apiSupplementCount, setApiSupplementCount] = useState<number | null>(null)
   const [apiEvidences, setApiEvidences] = useState<EvidenceItem[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const pageSize = 10
@@ -186,6 +191,9 @@ export default function TeacherDashboard({
   // Form states for adding new evidence
   const [fields, setFields] = useState<FieldItem[]>(FRONTEND_FALLBACK_FIELDS)
   const [editingEvidence, setEditingEvidence] = useState<EvidenceItem | null>(null)
+  const [evidenceToDelete, setEvidenceToDelete] = useState<EvidenceItem | null>(null)
+  const [deleteModalOpened, setDeleteModalOpened] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [standardName, setStandardName] = useState("NĂNG LỰC SỬ DỤNG CÔNG NGHỆ SỐ")
@@ -204,6 +212,18 @@ export default function TeacherDashboard({
     }
   }, [notificationTimeoutId])
 
+  const triggerNotification = useCallback((msg: string) => {
+    if (notificationTimeoutId) {
+      clearTimeout(notificationTimeoutId)
+    }
+    setNotificationMessage(msg)
+    const timeoutId = setTimeout(() => {
+      setNotificationMessage(null)
+      setNotificationTimeoutId(null)
+    }, 4000)
+    setNotificationTimeoutId(timeoutId)
+  }, [notificationTimeoutId])
+
   useEffect(() => {
     getFieldsAndCriteria().then((res) => {
       if (res && res.length > 0) {
@@ -215,40 +235,54 @@ export default function TeacherDashboard({
       }
     })
   }, [])
-  const loadSummaryData = useCallback(async (targetPage = currentPage, targetSearch = searchQuery, targetStatus = statusFilter) => {
+  const handleManualRefresh = useCallback(async (targetPage = currentPage, targetSearch = searchQuery, targetStatus = statusFilter) => {
     setLoadingApi(true)
-    const res = await getTeacherSummaryApi({
-      page: targetPage,
-      limit: pageSize,
-      search: targetSearch,
-      status: targetStatus
-    })
+    const [res, latestFields, suppCount] = await Promise.all([
+      getTeacherSummaryApi({
+        page: targetPage,
+        limit: pageSize,
+        search: targetSearch,
+        status: targetStatus
+      }),
+      getFieldsAndCriteria(),
+      getMySupplementCountApi()
+    ])
     if (res && res.success) {
+      setIsApiLoaded(true)
       setApiSummary(res.summary)
       setApiEvidences(res.evidences)
       if (res.pagination) {
         setPaginationInfo(res.pagination)
       }
     }
+    setApiSupplementCount(suppCount)
+    if (latestFields && latestFields.length > 0) {
+      setFields(latestFields)
+    }
     setLoadingApi(false)
   }, [currentPage, pageSize, searchQuery, statusFilter])
 
   useEffect(() => {
     let isSubscribed = true
-    getTeacherSummaryApi({
-      page: currentPage,
-      limit: pageSize,
-      search: searchQuery,
-      status: statusFilter
-    }).then((res) => {
+    Promise.all([
+      getTeacherSummaryApi({
+        page: currentPage,
+        limit: pageSize,
+        search: searchQuery,
+        status: statusFilter
+      }),
+      getMySupplementCountApi()
+    ]).then(([res, suppCount]) => {
       if (isSubscribed) {
         if (res && res.success) {
+          setIsApiLoaded(true)
           setApiSummary(res.summary)
           setApiEvidences(res.evidences)
           if (res.pagination) {
             setPaginationInfo(res.pagination)
           }
         }
+        setApiSupplementCount(suppCount)
         setLoadingApi(false)
       }
     })
@@ -284,7 +318,7 @@ export default function TeacherDashboard({
     return matchesSearch && matchesStatus
   })
 
-  const displayEvidences = apiEvidences.length > 0
+  const displayEvidences = isApiLoaded
     ? apiEvidences
     : fallbackFiltered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
@@ -294,11 +328,16 @@ export default function TeacherDashboard({
   const totalCount = apiSummary ? apiSummary.totalSubmitted : fallbackTeacherEvidences.length
   const approvedCount = apiSummary ? apiSummary.approvedCount : fallbackTeacherEvidences.filter((e) => e.currentStatus === EvidenceStatusValues.APPROVED).length
   const pendingCount = apiSummary ? apiSummary.pendingCount : fallbackTeacherEvidences.filter((e) => e.currentStatus === EvidenceStatusValues.PENDING).length
+  const needsSupplementCount = apiSupplementCount !== null
+    ? apiSupplementCount
+    : (apiSummary
+      ? (apiSummary.needsSupplementCount ?? 0)
+      : fallbackTeacherEvidences.filter((e) => e.currentStatus === EvidenceStatusValues.NEEDS_SUPPLEMENT).length)
   const totalCriteriaCount = apiSummary ? apiSummary.totalCriteriaCount : 35
   const completionPercentage = apiSummary ? apiSummary.completionPercentage : Math.round((approvedCount / totalCriteriaCount) * 100)
   const completedCriteriaCount = apiSummary ? apiSummary.completedCriteriaCount : approvedCount
 
-  const teacherEvidences = apiEvidences.length > 0 ? apiEvidences : fallbackTeacherEvidences
+  const teacherEvidences = isApiLoaded ? apiEvidences : fallbackTeacherEvidences
 
   const getCriterionBlockedStatus = (c: { criteriaId: string; criteriaName: string; status?: string }) => {
     // 1. Check criterion status directly from fields API
@@ -430,21 +469,36 @@ export default function TeacherDashboard({
     setModalOpened(true)
   }
 
-  const handleDeleteEvidence = async (item: EvidenceItem) => {
-    if (window.confirm(`Bạn có chắc chắn muốn xóa minh chứng "${item.title}"?`)) {
-      const ok = await deleteEvidenceApi(item.id || item.evidenceId)
-      if (ok) {
-        setNotificationMessage("Đã xóa minh chứng thành công!")
-        await loadSummaryData(currentPage, searchQuery, statusFilter)
-        const latestFields = await getFieldsAndCriteria()
-        if (latestFields && latestFields.length > 0) {
-          setFields(latestFields)
-        }
-      } else {
-        setNotificationMessage("Xóa minh chứng không thành công. Vui lòng thử lại!")
+  const handleDeleteEvidence = (item: EvidenceItem) => {
+    setEvidenceToDelete(item)
+    setDeleteModalOpened(true)
+  }
+
+  const confirmDeleteEvidence = async () => {
+    if (!evidenceToDelete) return
+    setIsDeleting(true)
+    const idToDelete = evidenceToDelete.id || evidenceToDelete.evidenceId
+    const ok = await deleteEvidenceApi(idToDelete)
+    if (ok) {
+      triggerNotification("Đã xóa minh chứng và tệp lưu trữ R2 thành công!")
+      // Cập nhật giao diện realtime lập tức bằng cách lọc bỏ minh chứng đã xóa
+      setApiEvidences((prev) => prev.filter((e) => e.id !== idToDelete && e.evidenceId !== idToDelete))
+
+      // Tính toán trang cần tải lại nếu trang hiện tại hết dữ liệu
+      let targetPage = currentPage
+      if (currentPage > 1 && apiEvidences.length <= 1) {
+        targetPage = currentPage - 1
+        setCurrentPage(targetPage)
       }
-      setTimeout(() => setNotificationMessage(null), 4000)
+
+      // Tự động kích hoạt tải lại dữ liệu mới nhất từ Backend
+      await handleManualRefresh(targetPage)
+    } else {
+      triggerNotification("Xóa minh chứng không thành công. Vui lòng thử lại!")
     }
+    setIsDeleting(false)
+    setDeleteModalOpened(false)
+    setEvidenceToDelete(null)
   }
 
   const standardOptions = fields.map((f) => {
@@ -531,14 +585,7 @@ export default function TeacherDashboard({
           if (res.statusText) statusText = res.statusText
         }
       }
-      setNotificationMessage(`Tiêu chí này ${statusText}. Vui lòng không nộp thêm minh chứng cho tiêu chí này!`)
-      if (notificationTimeoutId) {
-        clearTimeout(notificationTimeoutId)
-      }
-      const timeoutId = setTimeout(() => {
-        setNotificationMessage(null)
-      }, 4000)
-      setNotificationTimeoutId(timeoutId)
+      triggerNotification(`Tiêu chí này ${statusText}. Vui lòng không nộp thêm minh chứng cho tiêu chí này!`)
       return
     }
 
@@ -561,10 +608,13 @@ export default function TeacherDashboard({
       }
     }
 
+    let successMsg: string
     if (editingEvidence) {
       await updateEvidenceApi(editingEvidence.id || editingEvidence.evidenceId, formData)
+      successMsg = "Đã cập nhật minh chứng thành công!"
     } else {
       await onAddEvidence(formData)
+      successMsg = "Đã nộp minh chứng thành công!"
     }
 
     // Reset form and reload API stats (reset page to 1 to show newly submitted evidence)
@@ -575,11 +625,12 @@ export default function TeacherDashboard({
     setEditingEvidence(null)
     setModalOpened(false)
     setCurrentPage(1)
-    await loadSummaryData(1, searchQuery, statusFilter)
-    const latestFields = await getFieldsAndCriteria()
-    if (latestFields && latestFields.length > 0) {
-      setFields(latestFields)
-    }
+
+    // Tải lại danh sách minh chứng mới nhất từ backend
+    await handleManualRefresh(1)
+
+    // Hiển thị thông báo thành công trong 4s rồi tự động biến mất
+    triggerNotification(successMsg)
   }
 
   const getStatusBadge = (status: EvidenceStatus) => {
@@ -597,9 +648,57 @@ export default function TeacherDashboard({
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans pb-12">
-      <AppHeader currentUser={currentUser} onLogout={onLogout} />
+      <AppHeader currentUser={currentUser} onLogout={onLogout} onUserUpdate={onUserUpdate} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        {/* Bottom-Right Notification Toast with Slide and Blur animation */}
+        <Transition
+          mounted={!!notificationMessage}
+          transition={{
+            in: { opacity: 1, transform: "translate3d(0, 0, 0)", filter: "blur(0px)" },
+            out: { opacity: 0, transform: "translate3d(100%, 20px, 0)", filter: "blur(12px)" },
+            common: { transformOrigin: "bottom right" },
+            transitionProperty: "opacity, transform, filter"
+          }}
+          duration={400}
+          timingFunction="cubic-bezier(0.16, 1, 0.3, 1)"
+        >
+          {(transitionStyles) => (
+            <div
+              style={transitionStyles}
+              className="fixed bottom-6 right-6 z-50 max-w-md w-auto min-w-[320px] pointer-events-auto"
+            >
+              <Alert
+                color={
+                  notificationMessage?.includes("không") ||
+                  notificationMessage?.includes("Vui lòng") ||
+                  notificationMessage?.includes("Lưu ý")
+                    ? "red"
+                    : "emerald"
+                }
+                title={
+                  notificationMessage?.includes("không") || notificationMessage?.includes("Vui lòng")
+                    ? "Cảnh báo hệ thống"
+                    : "Thông báo"
+                }
+                icon={
+                  notificationMessage?.includes("không") || notificationMessage?.includes("Vui lòng")
+                    ? <IconAlertTriangle size={20} />
+                    : <IconCheck size={20} />
+                }
+                radius="lg"
+                withCloseButton
+                onClose={() => setNotificationMessage(null)}
+                className="shadow-2xl border border-slate-200/80 bg-white/95 backdrop-blur-md"
+              >
+                <Text fw={600} size="sm">
+                  {notificationMessage}
+                </Text>
+              </Alert>
+            </div>
+          )}
+        </Transition>
+
         {/* Banner Welcome Card */}
         <Paper className="p-6 sm:p-8 bg-brand-gradient text-white shadow-lg rounded-2xl relative overflow-hidden">
           <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
@@ -642,7 +741,7 @@ export default function TeacherDashboard({
             variant="light"
             color="blue"
             leftSection={<IconRefresh size={14} />}
-            onClick={() => loadSummaryData()}
+            onClick={() => handleManualRefresh()}
             loading={loadingApi}
           >
             Làm mới từ Backend
@@ -650,7 +749,7 @@ export default function TeacherDashboard({
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <Card padding="lg" radius="lg" className="border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -703,10 +802,26 @@ export default function TeacherDashboard({
             <div className="flex items-center justify-between">
               <div>
                 <Text size="xs" c="dimmed" fw={600} className="uppercase tracking-wider">
-                  Tiến Độ Hoàn Thành Tiêu Chí
+                  Yêu Cầu Bổ Sung
+                </Text>
+                <Text size="xl" fw={800} className="mt-1 text-red-600">
+                  {needsSupplementCount} <span className="text-xs font-normal text-slate-500">minh chứng</span>
+                </Text>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-50 text-red-600">
+                <IconAlertTriangle size={24} />
+              </div>
+            </div>
+          </Card>
+
+          <Card padding="lg" radius="lg" className="border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <Text size="xs" c="dimmed" fw={600} className="uppercase tracking-wider">
+                  Tiến Độ Hoàn Thành
                 </Text>
                 <Text size="xl" fw={800} className="mt-1 text-blue-900">
-                  {completionPercentage}% <span className="text-xs font-normal text-slate-500">({completedCriteriaCount}/{totalCriteriaCount} tiêu chí)</span>
+                  {completionPercentage}% <span className="text-xs font-normal text-slate-500">({completedCriteriaCount}/{totalCriteriaCount})</span>
                 </Text>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
@@ -789,7 +904,7 @@ export default function TeacherDashboard({
                     {displayEvidences.length === 0 ? (
                       <Table.Tr>
                         <Table.Td colSpan={6} className="text-center py-8 text-slate-500">
-                          Chưa tìm thấy minh chứng nào phù hợp với giáo viên hiện tại.
+                          Bạn chưa upload minh chứng.
                         </Table.Td>
                       </Table.Tr>
                     ) : (
@@ -1167,12 +1282,30 @@ export default function TeacherDashboard({
                   
                   <div className="overflow-hidden flex justify-center bg-white rounded-md border border-slate-200 p-2 min-h-[250px]">
                     {(() => {
-                      const format = selectedEvidence.fileFormat ? selectedEvidence.fileFormat.toLowerCase() : ""
+                      const getExtension = () => {
+                        if (selectedEvidence.originalFileName) {
+                          const parts = selectedEvidence.originalFileName.split(".")
+                          if (parts.length > 1) {
+                            const extension = parts.pop()?.toLowerCase() || ""
+                            if (extension) return extension
+                          }
+                        }
+                        const rawFormat = selectedEvidence.fileFormat ? selectedEvidence.fileFormat.toLowerCase() : ""
+                        if (rawFormat.includes("/")) {
+                          const subType = rawFormat.split("/")[1]
+                          if (subType.includes("word") || subType.includes("document")) return "docx"
+                          if (subType.includes("sheet") || subType.includes("excel") || subType === "xlsx" || subType === "xls") return "xlsx"
+                          if (subType.includes("presentation") || subType.includes("powerpoint") || subType === "pptx" || subType === "ppt") return "pptx"
+                          return subType
+                        }
+                        return rawFormat.replace(/^\./, "")
+                      }
+                      const ext = getExtension()
                       const url = selectedEvidence.urlFile
                       if (!url || url === "#") {
                         return <Text size="xs" c="red" className="text-center my-auto">Không tìm thấy đường dẫn tệp tin thực tế.</Text>
                       }
-                      if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(format)) {
+                      if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) {
                         return (
                           <img 
                             src={url} 
@@ -1180,7 +1313,7 @@ export default function TeacherDashboard({
                             className="max-h-[350px] object-contain rounded" 
                           />
                         )
-                      } else if (format === "pdf") {
+                      } else if (ext === "pdf") {
                         return (
                           <iframe 
                             src={url} 
@@ -1188,7 +1321,7 @@ export default function TeacherDashboard({
                             className="w-full h-[400px] border-0" 
                           />
                         )
-                      } else if (["docx", "doc", "xlsx", "xls", "pptx", "ppt"].includes(format)) {
+                      } else if (["docx", "doc", "xlsx", "xls", "pptx", "ppt"].includes(ext)) {
                         return (
                           <div className="w-full space-y-2">
                             <iframe 
@@ -1205,7 +1338,7 @@ export default function TeacherDashboard({
                         return (
                           <div className="text-center my-auto p-4 space-y-2">
                             <IconFileText size={40} className="text-slate-400 mx-auto" />
-                            <Text size="xs" c="dimmed">Không hỗ trợ xem trước trực tiếp định dạng này ({format.toUpperCase()}).</Text>
+                            <Text size="xs" c="dimmed">Không hỗ trợ xem trước trực tiếp định dạng này ({ext.toUpperCase()}).</Text>
                             <Button 
                               size="xs" 
                               variant="light" 
@@ -1234,6 +1367,77 @@ export default function TeacherDashboard({
           </div>
         </Modal>
       )}
+
+      {/* Modal: Mantine Confirmation for Deleting Evidence */}
+      <Modal
+        opened={deleteModalOpened}
+        onClose={() => {
+          if (!isDeleting) {
+            setDeleteModalOpened(false)
+            setEvidenceToDelete(null)
+          }
+        }}
+        title={
+          <Group gap="xs">
+            <IconAlertTriangle className="text-red-600" size={22} />
+            <Text fw={700} className="text-red-900">
+              Xác Nhận Xóa Minh Chứng
+            </Text>
+          </Group>
+        }
+        radius="lg"
+        centered
+      >
+        <div className="space-y-4">
+          <Text size="sm" className="text-slate-800">
+            Bạn có chắc chắn muốn xóa minh chứng này khỏi hệ thống?
+          </Text>
+
+          {evidenceToDelete && (
+            <Paper p="sm" withBorder radius="md" className="bg-red-50/50 border-red-200 space-y-1">
+              <Text fw={700} size="sm" className="text-red-950">
+                {evidenceToDelete.title}
+              </Text>
+              <Text size="xs" c="dimmed">
+                <span className="font-semibold text-slate-700">Tiêu chuẩn:</span> {evidenceToDelete.standardName}
+              </Text>
+              <Text size="xs" c="dimmed">
+                <span className="font-semibold text-slate-700">Tiêu chí:</span> {evidenceToDelete.criteriaName}
+              </Text>
+              {evidenceToDelete.originalFileName && (
+                <Text size="xs" className="mt-1 font-medium text-slate-800">
+                  📎 Tệp đính kèm: {evidenceToDelete.originalFileName}
+                </Text>
+              )}
+            </Paper>
+          )}
+
+          <Text size="xs" className="text-amber-900 bg-amber-50 p-2.5 rounded border border-amber-200">
+            ⚠️ Hành động này sẽ <strong>xóa vĩnh viễn tệp đính kèm trên hệ thống Cloudflare R2</strong> và <strong>xóa toàn bộ dữ liệu minh chứng này khỏi cơ sở dữ liệu</strong>. Bạn sẽ không thể phục hồi sau khi xóa.
+          </Text>
+
+          <Group justify="end" gap="xs" className="pt-2">
+            <Button
+              variant="default"
+              disabled={isDeleting}
+              onClick={() => {
+                setDeleteModalOpened(false)
+                setEvidenceToDelete(null)
+              }}
+            >
+              Hủy
+            </Button>
+            <Button
+              color="red"
+              loading={isDeleting}
+              leftSection={<IconTrash size={16} />}
+              onClick={confirmDeleteEvidence}
+            >
+              Xóa Vĩnh Viễn
+            </Button>
+          </Group>
+        </div>
+      </Modal>
     </div>
   )
 }

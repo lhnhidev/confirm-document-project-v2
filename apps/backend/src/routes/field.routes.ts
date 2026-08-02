@@ -51,8 +51,8 @@ async function getUserFieldsHandler(req: AuthRequest, res: Response) {
             fieldCode: template.fieldCode,
             fieldName: template.fieldName,
             percent: template.percent,
-            criteria: template.criteria,
-            user: dbUser._id
+            criteria: template.criteria as any,
+            user: dbUser._id as any
           });
           createdIds.push(newField._id as Types.ObjectId);
           fields.push(newField);
@@ -78,8 +78,8 @@ async function getUserFieldsHandler(req: AuthRequest, res: Response) {
           fieldCode: template.fieldCode,
           fieldName: template.fieldName,
           percent: template.percent,
-          criteria: template.criteria,
-          user: dbUser._id
+          criteria: template.criteria as any,
+          user: dbUser._id as any
         });
         createdIds.push(newField._id as Types.ObjectId);
         fields.push(newField);
@@ -113,6 +113,65 @@ async function getUserFieldsHandler(req: AuthRequest, res: Response) {
     });
   }
 }
+
+/**
+ * POST /api/fields/reset-criteria
+ * Reset toàn bộ tiêu chí của user hiện tại về trạng thái "incomplete" (chưa hoàn thành)
+ */
+router.post("/reset-criteria", authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ success: false, message: "Chưa xác thực người dùng!" });
+    }
+
+    const dbUser = await User.findOne({
+      $or: [
+        { email: user.email.toLowerCase() },
+        { userId: user.userId }
+      ]
+    });
+
+    if (dbUser) {
+      await Field.deleteMany({ user: dbUser._id });
+      const createdIds: Types.ObjectId[] = [];
+      const newFields = [];
+
+      for (const template of FALLBACK_FIELDS) {
+        const newField = await Field.create({
+          fieldCode: template.fieldCode,
+          fieldName: template.fieldName,
+          percent: 0,
+          criteria: template.criteria.map((c) => ({ ...c, status: "incomplete" })),
+          user: dbUser._id
+        });
+        createdIds.push(newField._id as Types.ObjectId);
+        newFields.push(newField);
+      }
+
+      dbUser.fields = createdIds;
+      await dbUser.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Đã reset tất cả các tiêu chí về trạng thái chưa hoàn thành!",
+        fields: sortFields(newFields)
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Đã reset các tiêu chí về trạng thái chưa hoàn thành!",
+      fields: sortFields(FALLBACK_FIELDS as any)
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi hệ thống khi reset tiêu chí!",
+      error: error.message
+    });
+  }
+});
 
 /**
  * GET /api/fields/my-fields

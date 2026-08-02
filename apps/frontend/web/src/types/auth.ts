@@ -14,6 +14,7 @@ export interface User {
   phoneNumber?: string
   departmentName?: string
   major: string
+  rawPassword?: string
 }
 
 export const EvidenceStatus = {

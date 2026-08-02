@@ -8,7 +8,8 @@ import { User, UserRole } from "../models/user.model.ts";
 import { Field } from "../models/field.model.ts";
 import { authenticateToken, authorizeRoles, type AuthRequest } from "../middleware/auth.middleware.ts";
 import { FALLBACK_FIELDS } from "../db/seedFieldsData.ts";
-import { uploadFilesToR2 } from "../services/r2.service.ts";
+import { uploadFilesToR2, deleteFileFromR2 } from "../services/r2.service.ts";
+const uploadMultipleFilesToR2 = uploadFilesToR2;
 
 const router = Router();
 const upload = multer({
@@ -21,27 +22,7 @@ const TOTAL_CRITERIA_COUNT = FALLBACK_FIELDS.reduce((acc, f) => acc + f.criteria
 
 // Sample initial in-memory evidences
 let inMemoryEvidences: any[] = [
-  {
-    id: "EV-001",
-    evidenceId: "MC-2026-001",
-    title: "Vận hành hệ thống quản lý học tập LMS cho học sinh",
-    description: "Đã ứng dụng thành thạo thiết bị số và phần mềm học tập trong năm học.",
-    standardName: "I. NĂNG LỰC SỬ DỤNG CÔNG NGHỆ SỐ",
-    criteriaName: "TC101. Vận hành thiết bị số phục vụ công việc chuyên môn",
-    originalFileName: "VanHanhThietBiSo_2025.pdf",
-    fileFormat: "application/pdf",
-    fileSize: 2450000,
-    urlFile: "https://example.com/files/vanhanh_2025.pdf",
-    currentStatus: EvidenceStatus.APPROVED,
-    date: "2026-02-15",
-    submittedBy: {
-      userId: "USR-002",
-      fullName: "Tống Thị Tuyết Huệ",
-      email: "ttthuedtnt@gmail.com",
-      departmentName: "Tổng hợp"
-    },
-    reviewComment: "Tổ trưởng đã phê duyệt minh chứng đạt chuẩn."
-  }
+  
 ];
 
 /**
@@ -399,6 +380,60 @@ router.get("/my-evidences", authenticateToken, async (req: AuthRequest, res: Res
 });
 
 /**
+ * GET /api/evidences/my-supplement-count
+ * Lấy riêng số lượng minh chứng yêu cầu bổ sung (NEEDS_SUPPLEMENT) của người dùng hiện tại
+ */
+router.get("/my-supplement-count", authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ success: false, message: "Chưa xác thực người dùng!" });
+    }
+
+    let allTeacherEvidences: any[] = [];
+    try {
+      const dbUser = await User.findOne({
+        $or: [
+          { email: user.email.toLowerCase() },
+          { userId: user.userId }
+        ]
+      });
+
+      if (dbUser) {
+        const dbEvidences = await Evidence.find({ submittedBy: dbUser._id });
+        allTeacherEvidences = dbEvidences.map((e: any) => formatEvidenceItem(e, dbUser));
+      }
+    } catch {
+      allTeacherEvidences = [];
+    }
+
+    if (allTeacherEvidences.length === 0) {
+      allTeacherEvidences = inMemoryEvidences.filter(
+        (e) =>
+          (e.submittedBy?.userId && e.submittedBy.userId === user.userId) ||
+          (e.submittedBy?.email && user.email && e.submittedBy.email.toLowerCase() === user.email.toLowerCase())
+      );
+    }
+
+    const needsSupplementCount = allTeacherEvidences.filter(
+      (e) => e.currentStatus === EvidenceStatus.NEEDS_SUPPLEMENT
+    ).length;
+
+    return res.status(200).json({
+      success: true,
+      needsSupplementCount,
+      totalSubmitted: allTeacherEvidences.length
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi hệ thống khi lấy số lượng minh chứng cần bổ sung!",
+      error: error.message
+    });
+  }
+});
+
+/**
  * GET /api/evidences
  * Lấy danh sách minh chứng sư phạm
  */
@@ -728,7 +763,7 @@ router.patch("/:id/status", authenticateToken, authorizeRoles(UserRole.DEPARTMEN
 
     let dbEvidence = null;
     try {
-      if (Types.ObjectId.isValid(id)) {
+      if (typeof id === "string" && Types.ObjectId.isValid(id)) {
         dbEvidence = await Evidence.findById(id).populate("submittedBy").populate("fieldId");
       }
       if (!dbEvidence) {
@@ -802,7 +837,7 @@ router.delete("/:id", authenticateToken, async (req: AuthRequest, res: Response)
 
     let dbEvidence = null;
     try {
-      if (Types.ObjectId.isValid(id)) {
+      if (typeof id === "string" && Types.ObjectId.isValid(id)) {
         dbEvidence = await Evidence.findById(id);
       }
       if (!dbEvidence) {
@@ -813,6 +848,10 @@ router.delete("/:id", authenticateToken, async (req: AuthRequest, res: Response)
     }
 
     if (dbEvidence) {
+      if (dbEvidence.urlFile) {
+        await deleteFileFromR2(dbEvidence.urlFile);
+      }
+
       if (dbEvidence.fieldId && dbEvidence.criterionId) {
         const field = await Field.findById(dbEvidence.fieldId);
         if (field) {
@@ -825,17 +864,26 @@ router.delete("/:id", authenticateToken, async (req: AuthRequest, res: Response)
       }
       await Evidence.findByIdAndDelete(dbEvidence._id);
 
-      const dbUser = await User.findById(user?.mongoId || user?.userId);
+      const dbUser = await User.findOne({
+        $or: [
+          { userId: user?.userId },
+          { email: user?.email }
+        ]
+      });
       if (dbUser && dbUser.evidences) {
         dbUser.evidences = dbUser.evidences.filter((evId: any) => evId.toString() !== dbEvidence!._id.toString());
         await dbUser.save();
       }
 
-      return res.status(200).json({ success: true, message: "Xóa minh chứng thành công!" });
+      return res.status(200).json({ success: true, message: "Xóa minh chứng và tệp lưu trữ R2 thành công!" });
     }
 
     const itemIndex = inMemoryEvidences.findIndex((e) => e.id === id || e.evidenceId === id);
     if (itemIndex !== -1) {
+      const target = inMemoryEvidences[itemIndex];
+      if (target && target.urlFile) {
+        await deleteFileFromR2(target.urlFile);
+      }
       inMemoryEvidences.splice(itemIndex, 1);
       return res.status(200).json({ success: true, message: "Xóa minh chứng thành công!" });
     }
@@ -858,7 +906,7 @@ router.put("/:id", authenticateToken, upload.array("files", 10), async (req: Aut
 
     let dbEvidence = null;
     try {
-      if (Types.ObjectId.isValid(id)) {
+      if (typeof id === "string" && Types.ObjectId.isValid(id)) {
         dbEvidence = await Evidence.findById(id);
       }
       if (!dbEvidence) {
@@ -870,7 +918,28 @@ router.put("/:id", authenticateToken, upload.array("files", 10), async (req: Aut
 
     let r2Result = { fileNames: "", fileFormats: "", totalSize: 0, urlFile: "#" };
     if (files && files.length > 0) {
-      r2Result = await uploadMultipleFilesToR2(files);
+      const user = req.user;
+      const userInfoForR2 = {
+        userId: user?.userId || "USR-001",
+        fullName: user?.fullName || "User",
+        role: user?.role || UserRole.TEACHER,
+        major: user?.major || user?.departmentName || "General",
+      };
+      let fieldCode = req.body.fieldCode || "I";
+      let criteriaIdStr = req.body.criteriaId || "TC101";
+      if (dbEvidence?.fieldId) {
+        const f = await Field.findById(dbEvidence.fieldId);
+        if (f) fieldCode = f.fieldCode;
+      }
+      if (dbEvidence?.criterionId) {
+        criteriaIdStr = dbEvidence.criterionId.toString();
+      }
+      r2Result = await uploadMultipleFilesToR2(
+        userInfoForR2,
+        fieldCode,
+        criteriaIdStr,
+        files
+      );
     }
 
     if (dbEvidence) {

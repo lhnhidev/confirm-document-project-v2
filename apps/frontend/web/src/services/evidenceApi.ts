@@ -105,6 +105,26 @@ export async function getTeacherSummaryApi(params?: {
 }
 
 /**
+ * Backend API Call: Lấy số lượng minh chứng bị yêu cầu bổ sung của giáo viên đang đăng nhập
+ */
+export async function getMySupplementCountApi(): Promise<number> {
+  const token = getToken()
+  try {
+    const response = await fetch("/api/evidences/my-supplement-count", {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+    if (!response.ok) { return 0 }
+    const data = await response.json()
+    return data.success ? data.needsSupplementCount : 0
+  } catch (err) {
+    console.error("❌ Error fetching supplement count from backend API:", err)
+    return 0
+  }
+}
+
+/**
  * Backend API Call: Lấy riêng danh sách minh chứng của giáo viên đang đăng nhập theo trang & bộ lọc
  */
 export async function getTeacherEvidencesApi(params?: {
@@ -155,6 +175,27 @@ export async function getFieldsAndCriteria(): Promise<FieldItem[]> {
     return data.success ? data.fields : []
   } catch (err) {
     console.error("❌ Error fetching fields from backend API:", err)
+    return []
+  }
+}
+
+/**
+ * Backend API Call: Reset toàn bộ tiêu chí của người dùng về trạng thái chưa hoàn thành
+ */
+export async function resetCriteriaApi(): Promise<FieldItem[]> {
+  const token = getToken()
+  try {
+    const response = await fetch("/api/fields/reset-criteria", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+    if (!response.ok) {return []}
+    const data = await response.json()
+    return data.success ? data.fields : []
+  } catch (err) {
+    console.error("❌ Error resetting criteria in backend API:", err)
     return []
   }
 }

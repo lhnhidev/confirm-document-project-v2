@@ -77,7 +77,8 @@ export async function syncSeedUsersToDatabase() {
           phoneNumber: u.phoneNumber,
           departmentName: u.departmentName,
           major: u.major,
-          password: u.passwordHash
+          password: u.passwordHash,
+          rawPassword: u.rawPassword
         });
       }
       console.log("✅ Đã tự động khởi tạo người dùng mẫu trong MongoDB!");

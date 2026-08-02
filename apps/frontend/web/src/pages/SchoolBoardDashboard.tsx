@@ -35,12 +35,15 @@ interface SchoolBoardDashboardProps {
   currentUser: User
   evidences: EvidenceItem[]
   onLogout: () => void
+  // eslint-disable-next-line no-unused-vars
+  onUserUpdate?: (_updatedUser: User) => void
 }
 
 export default function SchoolBoardDashboard({
   currentUser,
   evidences,
-  onLogout
+  onLogout,
+  onUserUpdate
 }: SchoolBoardDashboardProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [departmentFilter, setDepartmentFilter] = useState("all")
@@ -99,7 +102,7 @@ export default function SchoolBoardDashboard({
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans pb-12">
-      <AppHeader currentUser={currentUser} onLogout={onLogout} />
+      <AppHeader currentUser={currentUser} onLogout={onLogout} onUserUpdate={onUserUpdate} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Banner Welcome Card */}
