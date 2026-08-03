@@ -44,7 +44,9 @@ import {
   IconExternalLink,
   IconEdit,
   IconTrash,
-  IconUsers
+  IconUsers,
+  IconCalendar,
+  IconCalendarX
 } from "@tabler/icons-react"
 import type { User, EvidenceItem, EvidenceStatus } from "../types/auth"
 import { EvidenceStatus as EvidenceStatusValues } from "../types/auth"
@@ -165,6 +167,8 @@ export default function TeacherDashboard({
   const [modalOpened, setModalOpened] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [startDate, setStartDate] = useState<string>("")
+  const [endDate, setEndDate] = useState<string>("")
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceItem | null>(null)
   const [showPreview, setShowPreview] = useState<boolean>(false)
 
@@ -237,14 +241,22 @@ export default function TeacherDashboard({
       }
     })
   }, [])
-  const handleManualRefresh = useCallback(async (targetPage = currentPage, targetSearch = searchQuery, targetStatus = statusFilter) => {
+  const handleManualRefresh = useCallback(async (
+    targetPage = currentPage,
+    targetSearch = searchQuery,
+    targetStatus = statusFilter,
+    targetStartDate = startDate,
+    targetEndDate = endDate
+  ) => {
     setLoadingApi(true)
     const [res, latestFields, suppCount] = await Promise.all([
       getTeacherSummaryApi({
         page: targetPage,
         limit: pageSize,
         search: targetSearch,
-        status: targetStatus
+        status: targetStatus,
+        startDate: targetStartDate,
+        endDate: targetEndDate
       }),
       getFieldsAndCriteria(),
       getMySupplementCountApi()
@@ -262,7 +274,7 @@ export default function TeacherDashboard({
       setFields(latestFields)
     }
     setLoadingApi(false)
-  }, [currentPage, pageSize, searchQuery, statusFilter])
+  }, [currentPage, pageSize, searchQuery, statusFilter, startDate, endDate])
 
   useEffect(() => {
     let isSubscribed = true
@@ -271,7 +283,9 @@ export default function TeacherDashboard({
         page: currentPage,
         limit: pageSize,
         search: searchQuery,
-        status: statusFilter
+        status: statusFilter,
+        startDate,
+        endDate
       }),
       getMySupplementCountApi()
     ]).then(([res, suppCount]) => {
@@ -291,7 +305,7 @@ export default function TeacherDashboard({
     return () => {
       isSubscribed = false
     }
-  }, [currentPage, pageSize, searchQuery, statusFilter, evidences])
+  }, [currentPage, pageSize, searchQuery, statusFilter, startDate, endDate, evidences])
 
   const handleSearchChange = (val: string) => {
     setSearchQuery(val)
@@ -317,7 +331,17 @@ export default function TeacherDashboard({
 
     const matchesStatus = statusFilter === "all" || item.currentStatus === statusFilter
 
-    return matchesSearch && matchesStatus
+    let matchesDate = true
+    if (item.date) {
+      if (startDate) {
+        matchesDate = matchesDate && (item.date >= startDate)
+      }
+      if (endDate) {
+        matchesDate = matchesDate && (item.date <= endDate)
+      }
+    }
+
+    return matchesSearch && matchesStatus && matchesDate
   })
 
   const displayEvidences = isApiLoaded
@@ -371,6 +395,27 @@ export default function TeacherDashboard({
     return { blocked: false, statusText: "", labelStatus: "" }
   }
 
+  const getCriterionSelectableStatus = (c: { criteriaId: string; criteriaName: string; status?: string }) => {
+    const blockedStatus = getCriterionBlockedStatus(c)
+    if (blockedStatus.blocked) {
+      return { selectable: false, reason: blockedStatus.labelStatus }
+    }
+
+    // Check if there is any evidence with NEEDS_SUPPLEMENT status in teacherEvidences for this criterion
+    const hasNeedsSupplement = teacherEvidences.some((e) => {
+      if (!e) return false
+      const isMatch = e.criteriaName === c.criteriaName || 
+                      (e.criteriaName && (e.criteriaName.includes(c.criteriaId) || c.criteriaName.includes(e.criteriaName)))
+      return isMatch && e.currentStatus === EvidenceStatusValues.NEEDS_SUPPLEMENT
+    })
+
+    if (hasNeedsSupplement) {
+      return { selectable: false, reason: "Yêu cầu bổ sung" }
+    }
+
+    return { selectable: true, reason: "" }
+  }
+
   const isCriterionBlocked = (cName: string) => {
     for (const f of fields) {
       if (!f.criteria) continue
@@ -382,8 +427,8 @@ export default function TeacherDashboard({
           crit.criteriaName.includes(cName)
       )
       if (c) {
-        const res = getCriterionBlockedStatus(c)
-        if (res.blocked) return true
+        const res = getCriterionSelectableStatus(c)
+        if (!res.selectable) return true
       }
     }
 
@@ -391,7 +436,9 @@ export default function TeacherDashboard({
       (e) =>
         e.criteriaName &&
         (e.criteriaName === cName || cName.includes(e.criteriaName) || e.criteriaName.includes(cName)) &&
-        (e.currentStatus === EvidenceStatusValues.APPROVED || e.currentStatus === EvidenceStatusValues.PENDING)
+        (e.currentStatus === EvidenceStatusValues.APPROVED || 
+         e.currentStatus === EvidenceStatusValues.PENDING ||
+         e.currentStatus === EvidenceStatusValues.NEEDS_SUPPLEMENT)
     )
   }
 
@@ -399,7 +446,7 @@ export default function TeacherDashboard({
     if (!field || !field.criteria || field.criteria.length === 0) {
       return false
     }
-    return field.criteria.every((c) => getCriterionBlockedStatus(c).blocked)
+    return field.criteria.every((c) => !getCriterionSelectableStatus(c).selectable)
   }
 
   const handleOpenAddModal = async () => {
@@ -417,13 +464,13 @@ export default function TeacherDashboard({
     }
 
     const firstStandardWithUnblocked = currentFields.find((f) =>
-      f.criteria && f.criteria.some((c) => !getCriterionBlockedStatus(c).blocked)
+      f.criteria && f.criteria.some((c) => getCriterionSelectableStatus(c).selectable)
     )
 
     if (firstStandardWithUnblocked) {
       setStandardName(firstStandardWithUnblocked.fieldName)
       const firstUnblocked = firstStandardWithUnblocked.criteria.find(
-        (c) => !getCriterionBlockedStatus(c).blocked
+        (c) => getCriterionSelectableStatus(c).selectable
       )
       if (firstUnblocked) {
         setCriteriaName(firstUnblocked.criteriaName)
@@ -518,18 +565,26 @@ export default function TeacherDashboard({
 
   const selectedFieldObj = fields.find((f) => f.fieldName === standardName) || fields[0]
   const criteriaOptions = selectedFieldObj && selectedFieldObj.criteria
-    ? selectedFieldObj.criteria.map((c) => {
-      const statusInfo = getCriterionBlockedStatus(c)
-      let suffix = ""
-      if (statusInfo.blocked) {
-        suffix = ` [🔒 ${statusInfo.labelStatus}]`
-      }
-      return {
-        value: c.criteriaName,
-        label: `${c.criteriaId}: ${c.criteriaName}${suffix}`,
-        disabled: statusInfo.blocked
-      }
-    })
+    ? selectedFieldObj.criteria
+      .filter((c) => {
+        if (editingEvidence) {
+          return true
+        }
+        const selectableInfo = getCriterionSelectableStatus(c)
+        return selectableInfo.selectable
+      })
+      .map((c) => {
+        const statusInfo = getCriterionBlockedStatus(c)
+        let suffix = ""
+        if (statusInfo.blocked) {
+          suffix = ` [🔒 ${statusInfo.labelStatus}]`
+        }
+        return {
+          value: c.criteriaName,
+          label: `${c.criteriaId}: ${c.criteriaName}${suffix}`,
+          disabled: statusInfo.blocked
+        }
+      })
     : []
 
   const handleFileChange = (files: File[] | File | null) => {
@@ -891,6 +946,61 @@ export default function TeacherDashboard({
                 </div>
               </div>
 
+              {/* Bộ lọc khoảng thời gian */}
+              <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-100 bg-slate-50/50 p-2.5 rounded-xl">
+                <Text size="xs" fw={600} className="text-slate-700 flex items-center gap-1">
+                  <IconCalendar size={14} className="text-blue-600" /> Bộ lọc ngày nộp:
+                </Text>
+
+                <div className="flex items-center gap-2">
+                  <TextInput
+                    type="date"
+                    size="xs"
+                    radius="md"
+                    value={startDate}
+                    onChange={(e) => {
+                      setStartDate(e.currentTarget.value)
+                      setCurrentPage(1)
+                    }}
+                    placeholder="Từ ngày"
+                    title="Từ ngày"
+                    className="w-36"
+                  />
+                  <Text size="xs" c="dimmed" className="font-medium">đến</Text>
+                  <TextInput
+                    type="date"
+                    size="xs"
+                    radius="md"
+                    value={endDate}
+                    onChange={(e) => {
+                      setEndDate(e.currentTarget.value)
+                      setCurrentPage(1)
+                    }}
+                    placeholder="Đến ngày"
+                    title="Đến ngày"
+                    className="w-36"
+                  />
+                </div>
+
+                {(startDate || endDate) && (
+                  <Tooltip label="Xóa bộ lọc ngày" withArrow>
+                    <ActionIcon
+                      variant="light"
+                      color="red"
+                      radius="md"
+                      size="sm"
+                      onClick={() => {
+                        setStartDate("")
+                        setEndDate("")
+                        setCurrentPage(1)
+                      }}
+                    >
+                      <IconCalendarX size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+              </div>
+
               {/* Table */}
               <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <Table highlightOnHover verticalSpacing="sm" horizontalSpacing="md">
@@ -1102,7 +1212,7 @@ export default function TeacherDashboard({
               if (val) {
                 const fObj = fields.find((f) => f.fieldName === val)
                 if (!editingEvidence && fObj && isStandardBlocked(fObj)) {
-                  setNotificationMessage("Tất cả các tiêu chí thuộc Tiêu chuẩn này đã được duyệt hoặc đang chờ duyệt. Vui lòng chọn Tiêu chuẩn khác!")
+                  setNotificationMessage("Tất cả các tiêu chí thuộc Tiêu chuẩn này đã được duyệt, đang chờ duyệt hoặc yêu cầu bổ sung. Vui lòng chọn Tiêu chuẩn khác!")
                   if (notificationTimeoutId) {
                     clearTimeout(notificationTimeoutId)
                   }
@@ -1114,7 +1224,7 @@ export default function TeacherDashboard({
                 }
                 setStandardName(val)
                 if (fObj && fObj.criteria && fObj.criteria.length > 0) {
-                  const firstUnblocked = fObj.criteria.find(c => !getCriterionBlockedStatus(c).blocked)
+                  const firstUnblocked = fObj.criteria.find(c => getCriterionSelectableStatus(c).selectable)
                   if (firstUnblocked) {
                     setCriteriaName(firstUnblocked.criteriaName)
                   } else {
@@ -1229,6 +1339,25 @@ export default function TeacherDashboard({
                 <div>{getStatusBadge(selectedEvidence.currentStatus)}</div>
               </div>
             </div>
+
+            {(selectedEvidence.currentStatus === "Approved" || selectedEvidence.currentStatus === "NeedsSupplement") && selectedEvidence.updatedAt && (
+              <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-lg text-xs space-y-1">
+                <Text size="xs" fw={600} className="text-blue-800 flex items-center gap-1">
+                  <IconCalendar size={14} className="text-blue-600" />
+                  Thời gian Tổ trưởng xét trạng thái:
+                </Text>
+                <Text fw={700} className="text-slate-800">
+                  {new Date(selectedEvidence.updatedAt).toLocaleString("vi-VN", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit"
+                  })}
+                </Text>
+              </div>
+            )}
 
             <div>
               <Text size="xs" c="dimmed">Tiêu chuẩn & Tiêu chí:</Text>

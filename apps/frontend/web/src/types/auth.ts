@@ -46,4 +46,5 @@ export interface EvidenceItem {
   standardName: string
   criteriaName: string
   reviewComment?: string
+  updatedAt?: string
 }

@@ -35,6 +35,7 @@ import { appThemeTokens } from "../theme"
 import { SEED_USERS } from "../data/seedUsers"
 import type { User } from "../types/auth"
 import { loginWithBackend } from "../services/authApi"
+import schoolEvidenceHero from "../assets/images/school_evidence_hero.jpg"
 
 interface LoginPageProps {
   onLoginSuccess: (_user: User) => void
@@ -172,7 +173,7 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
             {/* Center Image Container */}
             <div className="relative z-10 my-6 overflow-hidden rounded-2xl border border-white/20 shadow-xl group">
               <img
-                src="/school_evidence_hero.jpg"
+                src={schoolEvidenceHero}
                 alt="Minh chứng giáo viên THPT"
                 referrerPolicy="no-referrer"
                 className="h-48 w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"

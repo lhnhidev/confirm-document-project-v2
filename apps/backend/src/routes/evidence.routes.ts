@@ -112,6 +112,7 @@ const formatEvidenceItem = (e: any, fallbackUser?: any) => {
       departmentName: e.submittedBy?.departmentName || fallbackUser?.departmentName || "Tổng hợp",
     },
     reviewComment: e.reviewComment || "",
+    updatedAt: e.updatedAt ? new Date(e.updatedAt).toISOString() : new Date().toISOString(),
   };
 };
 
@@ -173,6 +174,8 @@ router.get("/my-summary", authenticateToken, async (req: AuthRequest, res: Respo
     const limitNum = Math.max(1, parseInt(req.query.limit as string) || 10);
     const searchQuery = (req.query.search as string || "").trim().toLowerCase();
     const statusFilter = (req.query.status as string || "all").trim();
+    const startDate = (req.query.startDate as string || "").trim();
+    const endDate = (req.query.endDate as string || "").trim();
 
     let dbUser = null;
     try {
@@ -248,7 +251,7 @@ router.get("/my-summary", authenticateToken, async (req: AuthRequest, res: Respo
 
     const completionPercentage = Math.round((completedCriteriaCount / totalCriteriaCount) * 100);
 
-    // Lọc tìm kiếm & trạng thái cho danh sách minh chứng
+    // Lọc tìm kiếm & trạng thái & khoảng thời gian cho danh sách minh chứng
     let filteredEvidences = allTeacherEvidences.filter((item) => {
       const matchesSearch =
         !searchQuery ||
@@ -259,7 +262,17 @@ router.get("/my-summary", authenticateToken, async (req: AuthRequest, res: Respo
 
       const matchesStatus = statusFilter === "all" || item.currentStatus === statusFilter;
 
-      return matchesSearch && matchesStatus;
+      let matchesDate = true;
+      if (item.date) {
+        if (startDate) {
+          matchesDate = matchesDate && (item.date >= startDate);
+        }
+        if (endDate) {
+          matchesDate = matchesDate && (item.date <= endDate);
+        }
+      }
+
+      return matchesSearch && matchesStatus && matchesDate;
     });
 
     // Phân trang backend
@@ -476,6 +489,8 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response) => {
               email: e.submittedBy?.email || "",
               departmentName: e.submittedBy?.departmentName || "Tổng hợp",
             },
+            reviewComment: e.reviewComment || "",
+            updatedAt: e.updatedAt ? new Date(e.updatedAt).toISOString() : new Date().toISOString(),
           };
         });
       }

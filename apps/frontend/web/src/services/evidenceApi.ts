@@ -81,6 +81,8 @@ export async function getTeacherSummaryApi(params?: {
   limit?: number
   search?: string
   status?: string
+  startDate?: string
+  endDate?: string
 }): Promise<TeacherSummaryResponse | null> {
   const token = getToken()
   try {
@@ -89,6 +91,8 @@ export async function getTeacherSummaryApi(params?: {
     if (params?.limit) {query.append("limit", params.limit.toString())}
     if (params?.search) {query.append("search", params.search)}
     if (params?.status && params.status !== "all") {query.append("status", params.status)}
+    if (params?.startDate) {query.append("startDate", params.startDate)}
+    if (params?.endDate) {query.append("endDate", params.endDate)}
 
     const response = await fetch(`/api/evidences/my-summary?${query.toString()}`, {
       headers: {
