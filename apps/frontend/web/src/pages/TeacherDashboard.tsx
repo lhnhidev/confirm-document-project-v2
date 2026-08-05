@@ -1336,26 +1336,36 @@ export default function TeacherDashboard({
             />
           )}
 
-          {editingEvidence?.currentStatus === EvidenceStatusValues.NEEDS_SUPPLEMENT && editingEvidence.urlFile && (
+          {editingEvidence && (editingEvidence.currentStatus === EvidenceStatusValues.NEEDS_SUPPLEMENT || editingEvidence.currentStatus === EvidenceStatusValues.PENDING) && editingEvidence.urlFile && (
             (() => {
               const isUrl = editingEvidence.fileFormat?.toLowerCase() === "url" || editingEvidence.fileFormat?.toLowerCase() === "link"
+              const isPending = editingEvidence.currentStatus === EvidenceStatusValues.PENDING
+              const colorTheme = isPending ? "blue" : "amber"
+              const containerBg = isPending ? "bg-blue-50/10" : "bg-amber-50/20"
+              const borderColor = isPending ? "border-blue-200" : "border-amber-200"
+              const borderInnerColor = isPending ? "border-blue-100" : "border-amber-100"
+              const textPrimary = isPending ? "text-blue-900" : "text-amber-900"
+              const textSecondary = isPending ? "text-blue-700" : "text-amber-700"
+              const iconColor = isPending ? "text-blue-700" : "text-amber-700"
+              const iconHeaderColor = isPending ? "text-blue-600" : "text-amber-600"
+
               if (isUrl) {
                 return (
-                  <div className="p-3.5 border border-amber-200 rounded-xl bg-amber-50/20 space-y-3">
-                    <div className="flex justify-between items-center pb-2 border-b border-amber-100">
+                  <div className={`p-3.5 border ${borderColor} rounded-xl ${containerBg} space-y-3`}>
+                    <div className={`flex justify-between items-center pb-2 border-b ${borderInnerColor}`}>
                       <div className="flex items-center gap-1.5">
-                        <IconLink size={16} className="text-amber-700" />
-                        <Text fw={700} size="xs" className="text-amber-900">
+                        <IconLink size={16} className={iconColor} />
+                        <Text fw={700} size="xs" className={textPrimary}>
                           Đường liên kết minh chứng hiện tại:
                         </Text>
                       </div>
-                      <Badge variant="light" color="amber" size="sm">
+                      <Badge variant="light" color={colorTheme} size="sm">
                         LIÊN KẾT
                       </Badge>
                     </div>
                     
                     <div className="flex justify-between items-center gap-2">
-                      <Text size="xs" fw={600} className="text-amber-700 break-all bg-white/95 p-2.5 rounded-lg border border-amber-100 flex-1 select-all">
+                      <Text size="xs" fw={600} className={`${textSecondary} break-all bg-white/95 p-2.5 rounded-lg border ${borderInnerColor} flex-1 select-all`}>
                         {editingEvidence.urlFile}
                       </Text>
                       <Button 
@@ -1364,7 +1374,7 @@ export default function TeacherDashboard({
                         target="_blank"
                         rel="noopener noreferrer"
                         size="xs"
-                        color="amber" 
+                        color={colorTheme} 
                         variant="light"
                         leftSection={<IconExternalLink size={14} />}
                       >
@@ -1376,26 +1386,26 @@ export default function TeacherDashboard({
               }
 
               return (
-                <div className="p-3.5 border border-amber-200 rounded-xl bg-amber-50/20 space-y-3">
-                  <div className="flex justify-between items-center pb-2 border-b border-amber-100">
+                <div className={`p-3.5 border ${borderColor} rounded-xl ${containerBg} space-y-3`}>
+                  <div className={`flex justify-between items-center pb-2 border-b ${borderInnerColor}`}>
                     <div className="flex items-center gap-1.5">
-                      <IconFileText size={16} className="text-amber-700" />
-                      <Text fw={700} size="xs" className="text-amber-900">
+                      <IconFileText size={16} className={iconColor} />
+                      <Text fw={700} size="xs" className={textPrimary}>
                         Tệp minh chứng hiện tại:
                       </Text>
                     </div>
-                    <Badge variant="light" color="amber" size="sm">
+                    <Badge variant="light" color={colorTheme} size="sm">
                       {editingEvidence.fileFormat ? editingEvidence.fileFormat.toUpperCase() : "Không rõ"}
                     </Badge>
                   </div>
                   
-                  <Text size="xs" fw={600} className="text-slate-700 font-mono break-all bg-white/90 p-2.5 rounded-lg border border-amber-100">
+                  <Text size="xs" fw={600} className={`text-slate-700 font-mono break-all bg-white/90 p-2.5 rounded-lg border ${borderInnerColor}`}>
                     {editingEvidence.originalFileName || "Chưa cập nhật tên tệp tin"}
                   </Text>
 
                   <div className="space-y-2">
-                    <Text fw={700} size="xs" className="text-amber-900 flex items-center gap-1">
-                      <IconEye size={14} className="text-amber-600" /> Xem trực tuyến nội dung tệp hiện tại:
+                    <Text fw={700} size="xs" className={`${textPrimary} flex items-center gap-1`}>
+                      <IconEye size={14} className={iconHeaderColor} /> Xem trực tuyến nội dung tệp hiện tại:
                     </Text>
                     <div className="overflow-hidden flex justify-center bg-white rounded-lg border border-slate-200 p-2.5 min-h-[220px]">
                       {(() => {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, Fragment } from "react"
-import { Table, Paper, Title, Text, Button, Loader, ActionIcon, Tooltip, Group } from "@mantine/core"
-import { IconSparkles, IconRefresh, IconEye, IconEdit, IconTrash, IconPlus, IconFileUpload } from "@tabler/icons-react"
+import { Table, Paper, Title, Text, Button, Loader, ActionIcon, Tooltip, Group, TextInput, Select } from "@mantine/core"
+import { IconSparkles, IconRefresh, IconEye, IconEdit, IconTrash, IconPlus, IconFileUpload, IconSearch, IconFilter } from "@tabler/icons-react"
 import { getFieldsAndCriteria, type FieldItem } from "../services/evidenceApi"
 import { EvidenceStatus } from "../types/auth"
 import type { EvidenceItem } from "../types/auth"
@@ -121,6 +121,8 @@ export default function CriteriaMatrixTable({
 }: CriteriaMatrixTableProps) {
   const [fields, setFields] = useState<FieldItem[]>(FRONTEND_FALLBACK_FIELDS)
   const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [statusFilter, setStatusFilter] = useState<string>("all")
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -196,6 +198,32 @@ export default function CriteriaMatrixTable({
   const totalFields = fields.length
   const totalCriteria = fields.reduce((sum, f) => sum + (f.criteria ? f.criteria.length : 0), 0)
 
+  // Filter the fields and their criteria
+  const filteredFields = fields.map((field) => {
+    if (!field.criteria) return { ...field, criteria: [] }
+    
+    const matchedCriteria = field.criteria.filter((c) => {
+      // Search by name or code
+      const query = searchQuery.trim().toLowerCase()
+      const matchesQuery = !query || 
+        c.criteriaName.toLowerCase().includes(query) || 
+        c.criteriaId.toLowerCase().includes(query) ||
+        field.fieldName.toLowerCase().includes(query) ||
+        field.fieldCode.toLowerCase().includes(query)
+
+      // Filter by status
+      const status = getCriteriaStatus(c)
+      const matchesStatus = statusFilter === "all" || status === statusFilter
+
+      return matchesQuery && matchesStatus
+    })
+
+    return {
+      ...field,
+      criteria: matchedCriteria
+    }
+  }).filter((field) => field.criteria.length > 0)
+
   return (
     <Paper p="lg" radius="lg" className="border border-slate-200 bg-white shadow-sm space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-4">
@@ -224,6 +252,30 @@ export default function CriteriaMatrixTable({
         </Button>
       </div>
 
+      {/* Bộ lọc tìm kiếm minh chứng */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+        <TextInput
+          placeholder="Tìm theo tên tiêu chí, mã tiêu chí (ví dụ: TC101, AI...)"
+          label="Tìm kiếm nội dung đánh giá"
+          leftSection={<IconSearch size={16} className="text-slate-400" />}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        <Select
+          label="Trạng thái tiêu chí"
+          value={statusFilter}
+          onChange={(value) => setStatusFilter(value || "all")}
+          data={[
+            { label: "Tất cả trạng thái", value: "all" },
+            { label: "Chưa thực hiện", value: "not_started" },
+            { label: "Đang chờ duyệt", value: "submitted" },
+            { label: "Cần bổ sung", value: "confirmed" },
+            { label: "Đã duyệt", value: "completed" },
+          ]}
+          leftSection={<IconFilter size={16} className="text-slate-400" />}
+        />
+      </div>
+
       {loading ? (
         <div className="flex justify-center py-12">
           <Loader color="blue" type="dots" />
@@ -241,9 +293,35 @@ export default function CriteriaMatrixTable({
             </Table.Thead>
 
             <Table.Tbody>
-              {fields.map((field) => {
-                const fieldTotalCriteria = field.criteria ? field.criteria.length : 0
-                let fieldCompletedCount = 0
+              {filteredFields.length === 0 ? (
+                <Table.Tr>
+                  <Table.Td colSpan={4} className="text-center py-12 text-slate-500 bg-slate-50/50">
+                    <div className="flex flex-col items-center justify-center gap-2 py-4">
+                      <IconSearch size={36} className="text-slate-400" />
+                      <Text fw={700} size="sm" className="text-slate-700">Không tìm thấy nội dung đánh giá phù hợp</Text>
+                      <Text size="xs" c="dimmed">Vui lòng thử lại với từ khóa hoặc trạng thái khác</Text>
+                      {(searchQuery || statusFilter !== "all") && (
+                        <Button 
+                          size="xs" 
+                          variant="subtle" 
+                          color="blue"
+                          onClick={() => {
+                            setSearchQuery("")
+                            setStatusFilter("all")
+                          }}
+                          className="mt-2"
+                        >
+                          Xóa bộ lọc
+                        </Button>
+                      )}
+                    </div>
+                  </Table.Td>
+                </Table.Tr>
+              ) : (
+                filteredFields.map((field) => {
+                  const originalField = fields.find((f) => f.fieldCode === field.fieldCode)
+                  const fieldTotalCriteria = originalField?.criteria ? originalField.criteria.length : 0
+                  let fieldCompletedCount = 0
 
                 if (field.criteria) {
                   field.criteria.forEach((c) => {
@@ -443,7 +521,8 @@ export default function CriteriaMatrixTable({
                     </Table.Tr>
                   </Fragment>
                 )
-              })}
+              })
+            )}
             </Table.Tbody>
           </Table>
         </div>
