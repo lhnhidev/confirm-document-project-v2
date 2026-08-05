@@ -624,7 +624,7 @@ router.post("/", authenticateToken, upload.array("files", 10), async (req: AuthR
       return res.status(401).json({ success: false, message: "Chưa xác thực!" });
     }
 
-    const { title, description, standardName, fieldCode, criteriaName, criteriaId } = req.body;
+    const { title, description, standardName, fieldCode, criteriaName, criteriaId, uploadType, evidenceLink } = req.body;
     const files = (req.files as Express.Multer.File[]) || [];
 
     const dbUser = await User.findOne({
@@ -653,7 +653,21 @@ router.post("/", authenticateToken, upload.array("files", 10), async (req: AuthR
       totalSize: Number(req.body.fileSize) || 1024000,
     };
 
-    if (files.length > 0) {
+    if (uploadType === "link" && evidenceLink) {
+      let fileName = "Liên kết ngoài";
+      try {
+        const urlObj = new URL(evidenceLink);
+        fileName = `Liên kết (${urlObj.hostname})`;
+      } catch {
+        fileName = "Liên kết ngoài";
+      }
+      r2Result = {
+        urlFile: evidenceLink,
+        fileNames: fileName,
+        fileFormats: "url",
+        totalSize: 0,
+      };
+    } else if (files.length > 0) {
       r2Result = await uploadFilesToR2(userInfoForR2, fieldCode || "I", criteriaId || "TC101", files);
     }
 
@@ -916,7 +930,7 @@ router.delete("/:id", authenticateToken, async (req: AuthRequest, res: Response)
 router.put("/:id", authenticateToken, upload.array("files", 10), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { title, description } = req.body;
+    const { title, description, uploadType, evidenceLink } = req.body;
     const files = req.files as Express.Multer.File[];
 
     let dbEvidence = null;
@@ -932,7 +946,21 @@ router.put("/:id", authenticateToken, upload.array("files", 10), async (req: Aut
     }
 
     let r2Result = { fileNames: "", fileFormats: "", totalSize: 0, urlFile: "#" };
-    if (files && files.length > 0) {
+    if (uploadType === "link" && evidenceLink) {
+      let fileName = "Liên kết ngoài";
+      try {
+        const urlObj = new URL(evidenceLink);
+        fileName = `Liên kết (${urlObj.hostname})`;
+      } catch {
+        fileName = "Liên kết ngoài";
+      }
+      r2Result = {
+        urlFile: evidenceLink,
+        fileNames: fileName,
+        fileFormats: "url",
+        totalSize: 0,
+      };
+    } else if (files && files.length > 0) {
       const user = req.user;
       const userInfoForR2 = {
         userId: user?.userId || "USR-001",
@@ -962,7 +990,7 @@ router.put("/:id", authenticateToken, upload.array("files", 10), async (req: Aut
       if (description !== undefined) dbEvidence.description = description;
       dbEvidence.currentStatus = EvidenceStatus.PENDING;
 
-      if (files && files.length > 0 && r2Result.urlFile !== "#") {
+      if ((uploadType === "link" && evidenceLink) || (files && files.length > 0 && r2Result.urlFile !== "#")) {
         dbEvidence.originalFileName = r2Result.fileNames;
         dbEvidence.fileFormat = r2Result.fileFormats;
         dbEvidence.fileSize = r2Result.totalSize;
@@ -1001,7 +1029,7 @@ router.put("/:id", authenticateToken, upload.array("files", 10), async (req: Aut
       if (description !== undefined) inMemoryEvidences[itemIndex].description = description;
       inMemoryEvidences[itemIndex].currentStatus = EvidenceStatus.PENDING;
 
-      if (files && files.length > 0 && r2Result.urlFile !== "#") {
+      if ((uploadType === "link" && evidenceLink) || (files && files.length > 0 && r2Result.urlFile !== "#")) {
         inMemoryEvidences[itemIndex].originalFileName = r2Result.fileNames;
         inMemoryEvidences[itemIndex].fileFormat = r2Result.fileFormats;
         inMemoryEvidences[itemIndex].fileSize = r2Result.totalSize;

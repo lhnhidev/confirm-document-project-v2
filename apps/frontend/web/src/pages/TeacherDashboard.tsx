@@ -20,7 +20,8 @@ import {
   Alert,
   Tabs,
   Pagination,
-  Transition
+  Transition,
+  SegmentedControl
 } from "@mantine/core"
 import {
   IconFileUpload,
@@ -42,6 +43,7 @@ import {
   IconSparkles,
   IconDownload,
   IconExternalLink,
+  IconLink,
   IconEdit,
   IconTrash,
   IconUsers,
@@ -170,7 +172,6 @@ export default function TeacherDashboard({
   const [startDate, setStartDate] = useState<string>("")
   const [endDate, setEndDate] = useState<string>("")
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceItem | null>(null)
-  const [showPreview, setShowPreview] = useState<boolean>(false)
 
   const handleDownload = (url: string, filename: string) => {
     if (!url || url === "#") {
@@ -205,6 +206,8 @@ export default function TeacherDashboard({
   const [standardName, setStandardName] = useState("NĂNG LỰC SỬ DỤNG CÔNG NGHỆ SỐ")
   const [criteriaName, setCriteriaName] = useState("Vận hành thiết bị số phục vụ công việc chuyên môn")
   const [selectedFiles, setSelectedFiles] = useState<File | null>(null)
+  const [uploadType, setUploadType] = useState<"file" | "link">("file")
+  const [evidenceLink, setEvidenceLink] = useState("")
   const [fileError, setFileError] = useState<string | null>(null)
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null)
   const [notificationTimeoutId, setNotificationTimeoutId] = useState<ReturnType<typeof setTimeout> | null>(null)
@@ -454,6 +457,8 @@ export default function TeacherDashboard({
     setTitle("")
     setDescription("")
     setSelectedFiles(null)
+    setUploadType("file")
+    setEvidenceLink("")
     setFileError(null)
 
     let currentFields = fields
@@ -489,6 +494,8 @@ export default function TeacherDashboard({
     setTitle("")
     setDescription("")
     setSelectedFiles(null)
+    setUploadType("file")
+    setEvidenceLink("")
     setFileError(null)
 
     const latestFields = await getFieldsAndCriteria()
@@ -515,6 +522,15 @@ export default function TeacherDashboard({
 
     setSelectedFiles(null)
     setFileError(null)
+
+    const format = item.fileFormat?.toLowerCase()
+    if (format === "url" || format === "link") {
+      setUploadType("link")
+      setEvidenceLink(item.urlFile)
+    } else {
+      setUploadType("file")
+      setEvidenceLink("")
+    }
 
     const latestFields = await getFieldsAndCriteria()
     if (latestFields && latestFields.length > 0) {
@@ -630,9 +646,13 @@ export default function TeacherDashboard({
 
   const handleFormSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!title || (!editingEvidence && !selectedFiles) || fileError) {
+    if (!title) return
+    if (uploadType === "file" && !editingEvidence && !selectedFiles) return
+    if (uploadType === "link" && !evidenceLink.trim()) {
+      setFileError("Vui lòng nhập đường liên kết minh chứng!")
       return
     }
+    if (fileError) return
 
     if (!editingEvidence && isCriterionBlocked(criteriaName)) {
       let statusText = "đã được duyệt hoặc đang chờ duyệt"
@@ -660,9 +680,12 @@ export default function TeacherDashboard({
     formData.append("fieldCode", fieldCode)
     formData.append("criteriaName", criteriaName)
     formData.append("criteriaId", criteriaId)
+    formData.append("uploadType", uploadType)
 
-    if (selectedFiles) {
+    if (uploadType === "file" && selectedFiles) {
       formData.append("files", selectedFiles)
+    } else if (uploadType === "link" && evidenceLink) {
+      formData.append("evidenceLink", evidenceLink.trim())
     }
 
     let successMsg: string
@@ -678,6 +701,8 @@ export default function TeacherDashboard({
     setTitle("")
     setDescription("")
     setSelectedFiles(null)
+    setUploadType("file")
+    setEvidenceLink("")
     setFileError(null)
     setEditingEvidence(null)
     setModalOpened(false)
@@ -1071,7 +1096,6 @@ export default function TeacherDashboard({
                                   size="sm"
                                   onClick={() => {
                                     setSelectedEvidence(item)
-                                    setShowPreview(false)
                                   }}
                                 >
                                   <IconEye size={16} />
@@ -1145,7 +1169,6 @@ export default function TeacherDashboard({
               evidences={teacherEvidences}
               onViewEvidence={(item) => {
                 setSelectedEvidence(item)
-                setShowPreview(false)
               }}
               onAddForCriterion={(std, crit) => handleOpenAddModalForCriterion(std, crit)}
               onEditEvidence={(item) => handleEditEvidence(item)}
@@ -1268,113 +1291,187 @@ export default function TeacherDashboard({
             }}
           />
 
-          <FileInput
-            label="Upload minh chứng mới"
-            placeholder="Chọn tệp minh chứng mới nếu muốn thay đổi (tối đa 5MB)..."
-            required={!editingEvidence}
-            clearable
-            leftSection={<IconFileUpload size={16} />}
-            value={selectedFiles || null}
-            onChange={handleFileChange}
-            accept=".pdf,.doc,.docx,.txt,image/*"
-            error={fileError}
-          />
+          <div className="space-y-1.5">
+            <Text size="sm" fw={600} className="text-slate-800">Hình thức nộp minh chứng</Text>
+            <SegmentedControl
+              fullWidth
+              value={uploadType}
+              onChange={(value) => {
+                setUploadType(value as "file" | "link")
+                setFileError(null)
+              }}
+              data={[
+                { label: "Tải tệp tin lên", value: "file" },
+                { label: "Đường liên kết (URL)", value: "link" }
+              ]}
+              color="blue"
+              className="mb-1"
+            />
+          </div>
+
+          {uploadType === "file" ? (
+            <FileInput
+              label="Tải tệp minh chứng mới"
+              placeholder="Chọn tệp minh chứng mới nếu muốn thay đổi (tối đa 5MB)..."
+              required={!editingEvidence}
+              clearable
+              leftSection={<IconFileUpload size={16} />}
+              value={selectedFiles || null}
+              onChange={handleFileChange}
+              accept=".pdf,.doc,.docx,.txt,image/*"
+              error={fileError}
+            />
+          ) : (
+            <TextInput
+              label="Nhập đường liên kết minh chứng"
+              placeholder="Dán link Drive, Dropbox, liên kết ngoài... (bắt đầu bằng http/https)"
+              required={!editingEvidence}
+              leftSection={<IconLink size={16} />}
+              value={evidenceLink}
+              onChange={(e) => {
+                setEvidenceLink(e.target.value)
+                setFileError(null)
+              }}
+              error={fileError}
+            />
+          )}
 
           {editingEvidence?.currentStatus === EvidenceStatusValues.NEEDS_SUPPLEMENT && editingEvidence.urlFile && (
-            <div className="p-3.5 border border-amber-200 rounded-xl bg-amber-50/20 space-y-3">
-              <div className="flex justify-between items-center pb-2 border-b border-amber-100">
-                <div className="flex items-center gap-1.5">
-                  <IconFileText size={16} className="text-amber-700" />
-                  <Text fw={700} size="xs" className="text-amber-900">
-                    Tệp minh chứng hiện tại:
-                  </Text>
-                </div>
-                <Badge variant="light" color="amber" size="sm">
-                  {editingEvidence.fileFormat ? editingEvidence.fileFormat.toUpperCase() : "Không rõ"}
-                </Badge>
-              </div>
-              
-              <Text size="xs" fw={600} className="text-slate-700 font-mono break-all bg-white/90 p-2.5 rounded-lg border border-amber-100">
-                {editingEvidence.originalFileName || "Chưa cập nhật tên tệp tin"}
-              </Text>
+            (() => {
+              const isUrl = editingEvidence.fileFormat?.toLowerCase() === "url" || editingEvidence.fileFormat?.toLowerCase() === "link"
+              if (isUrl) {
+                return (
+                  <div className="p-3.5 border border-amber-200 rounded-xl bg-amber-50/20 space-y-3">
+                    <div className="flex justify-between items-center pb-2 border-b border-amber-100">
+                      <div className="flex items-center gap-1.5">
+                        <IconLink size={16} className="text-amber-700" />
+                        <Text fw={700} size="xs" className="text-amber-900">
+                          Đường liên kết minh chứng hiện tại:
+                        </Text>
+                      </div>
+                      <Badge variant="light" color="amber" size="sm">
+                        LIÊN KẾT
+                      </Badge>
+                    </div>
+                    
+                    <div className="flex justify-between items-center gap-2">
+                      <Text size="xs" fw={600} className="text-amber-700 break-all bg-white/95 p-2.5 rounded-lg border border-amber-100 flex-1 select-all">
+                        {editingEvidence.urlFile}
+                      </Text>
+                      <Button 
+                        component="a"
+                        href={editingEvidence.urlFile}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        size="xs"
+                        color="amber" 
+                        variant="light"
+                        leftSection={<IconExternalLink size={14} />}
+                      >
+                        Mở liên kết
+                      </Button>
+                    </div>
+                  </div>
+                )
+              }
 
-              <div className="space-y-2">
-                <Text fw={700} size="xs" className="text-amber-900 flex items-center gap-1">
-                  <IconEye size={14} className="text-amber-600" /> Xem trực tuyến nội dung tệp hiện tại:
-                </Text>
-                <div className="overflow-hidden flex justify-center bg-white rounded-lg border border-slate-200 p-2.5 min-h-[220px]">
-                  {(() => {
-                    const getExtension = () => {
-                      if (editingEvidence.originalFileName) {
-                        const parts = editingEvidence.originalFileName.split(".")
-                        if (parts.length > 1) {
-                          const extension = parts.pop()?.toLowerCase() || ""
-                          if (extension) return extension
+              return (
+                <div className="p-3.5 border border-amber-200 rounded-xl bg-amber-50/20 space-y-3">
+                  <div className="flex justify-between items-center pb-2 border-b border-amber-100">
+                    <div className="flex items-center gap-1.5">
+                      <IconFileText size={16} className="text-amber-700" />
+                      <Text fw={700} size="xs" className="text-amber-900">
+                        Tệp minh chứng hiện tại:
+                      </Text>
+                    </div>
+                    <Badge variant="light" color="amber" size="sm">
+                      {editingEvidence.fileFormat ? editingEvidence.fileFormat.toUpperCase() : "Không rõ"}
+                    </Badge>
+                  </div>
+                  
+                  <Text size="xs" fw={600} className="text-slate-700 font-mono break-all bg-white/90 p-2.5 rounded-lg border border-amber-100">
+                    {editingEvidence.originalFileName || "Chưa cập nhật tên tệp tin"}
+                  </Text>
+
+                  <div className="space-y-2">
+                    <Text fw={700} size="xs" className="text-amber-900 flex items-center gap-1">
+                      <IconEye size={14} className="text-amber-600" /> Xem trực tuyến nội dung tệp hiện tại:
+                    </Text>
+                    <div className="overflow-hidden flex justify-center bg-white rounded-lg border border-slate-200 p-2.5 min-h-[220px]">
+                      {(() => {
+                        const getExtension = () => {
+                          if (editingEvidence.originalFileName) {
+                            const parts = editingEvidence.originalFileName.split(".")
+                            if (parts.length > 1) {
+                              const extension = parts.pop()?.toLowerCase() || ""
+                              if (extension) return extension
+                            }
+                          }
+                          const rawFormat = editingEvidence.fileFormat ? editingEvidence.fileFormat.toLowerCase() : ""
+                          if (rawFormat.includes("/")) {
+                            const subType = rawFormat.split("/")[1]
+                            if (subType.includes("word") || subType.includes("document")) return "docx"
+                            if (subType.includes("sheet") || subType.includes("excel") || subType === "xlsx" || subType === "xls") return "xlsx"
+                            if (subType.includes("presentation") || subType.includes("powerpoint") || subType === "pptx" || subType === "ppt") return "pptx"
+                            return subType
+                          }
+                          return rawFormat.replace(/^\./, "")
                         }
-                      }
-                      const rawFormat = editingEvidence.fileFormat ? editingEvidence.fileFormat.toLowerCase() : ""
-                      if (rawFormat.includes("/")) {
-                        const subType = rawFormat.split("/")[1]
-                        if (subType.includes("word") || subType.includes("document")) return "docx"
-                        if (subType.includes("sheet") || subType.includes("excel") || subType === "xlsx" || subType === "xls") return "xlsx"
-                        if (subType.includes("presentation") || subType.includes("powerpoint") || subType === "pptx" || subType === "ppt") return "pptx"
-                        return subType
-                      }
-                      return rawFormat.replace(/^\./, "")
-                    }
-                    const ext = getExtension()
-                    const url = editingEvidence.urlFile
-                    if (!url || url === "#") {
-                      return <Text size="xs" c="red" className="text-center my-auto">Không tìm thấy đường dẫn tệp tin thực tế.</Text>
-                    }
-                    if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) {
-                      return (
-                        <img 
-                          src={url} 
-                          alt={editingEvidence.title} 
-                          className="max-h-[220px] object-contain rounded-md" 
-                        />
-                      )
-                    } else if (ext === "pdf") {
-                      return (
-                        <iframe 
-                          src={url} 
-                          title={editingEvidence.title} 
-                          className="w-full h-[280px] border-0 rounded-md" 
-                        />
-                      )
-                    } else if (["docx", "doc", "xlsx", "xls", "pptx", "ppt"].includes(ext)) {
-                      return (
-                        <div className="w-full space-y-1.5">
-                          <iframe 
-                            src={`https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`} 
-                            title={editingEvidence.title} 
-                            className="w-full h-[250px] border-0 rounded-md" 
-                          />
-                          <Text size="10px" c="dimmed" className="text-center block font-medium">
-                            Nội dung tải trực tuyến từ Office Preview.
-                          </Text>
-                        </div>
-                      )
-                    } else {
-                      return (
-                        <div className="text-center my-auto p-4 space-y-2">
-                          <Text size="xs" c="dimmed">Không hỗ trợ hiển thị xem trước định dạng .{ext}</Text>
-                          <a 
-                            href={url} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            className="text-xs text-blue-600 hover:underline font-semibold flex items-center justify-center gap-1"
-                          >
-                            <IconExternalLink size={12} /> Tải tệp xuống hoặc mở rộng
-                          </a>
-                        </div>
-                      )
-                    }
-                  })()}
+                        const ext = getExtension()
+                        const url = editingEvidence.urlFile
+                        if (!url || url === "#") {
+                          return <Text size="xs" c="red" className="text-center my-auto">Không tìm thấy đường dẫn tệp tin thực tế.</Text>
+                        }
+                        if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) {
+                          return (
+                            <img 
+                              src={url} 
+                              alt={editingEvidence.title} 
+                              className="max-h-[220px] object-contain rounded-md" 
+                            />
+                          )
+                        } else if (ext === "pdf") {
+                          return (
+                            <iframe 
+                              src={url} 
+                              title={editingEvidence.title} 
+                              className="w-full h-[280px] border-0 rounded-md" 
+                            />
+                          )
+                        } else if (["docx", "doc", "xlsx", "xls", "pptx", "ppt"].includes(ext)) {
+                          return (
+                            <div className="w-full space-y-1.5">
+                              <iframe 
+                                src={`https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`} 
+                                title={editingEvidence.title} 
+                                className="w-full h-[250px] border-0 rounded-md" 
+                              />
+                              <Text size="10px" c="dimmed" className="text-center block font-medium">
+                                Nội dung tải trực tuyến từ Office Preview.
+                              </Text>
+                            </div>
+                          )
+                        } else {
+                          return (
+                            <div className="text-center my-auto p-4 space-y-2">
+                              <Text size="xs" c="dimmed">Không hỗ trợ hiển thị xem trước định dạng .{ext}</Text>
+                              <a 
+                                href={url} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="text-xs text-blue-600 hover:underline font-semibold flex items-center justify-center gap-1"
+                              >
+                                <IconExternalLink size={12} /> Tải tệp xuống hoặc mở rộng
+                              </a>
+                            </div>
+                          )
+                        }
+                      })()}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              )
+            })()
           )}
 
           <Textarea
@@ -1402,7 +1499,6 @@ export default function TeacherDashboard({
           opened={!!selectedEvidence}
           onClose={() => {
             setSelectedEvidence(null)
-            setShowPreview(false)
           }}
           title={
             <Group gap="xs">
@@ -1463,15 +1559,165 @@ export default function TeacherDashboard({
               <Text size="xs" className="text-slate-600">{selectedEvidence.criteriaName}</Text>
             </div>
 
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
-              <div className="flex justify-between items-center text-xs">
-                <Text size="xs" c="dimmed">Tệp đính kèm:</Text>
-                <Badge variant="light" size="sm">{selectedEvidence.fileFormat ? selectedEvidence.fileFormat.toUpperCase() : "Không rõ"}</Badge>
-              </div>
-              <Text size="xs" fw={600} className="text-slate-800 truncate block">
-                {selectedEvidence.originalFileName || "Chưa cập nhật tên tệp tin"}
-              </Text>
-            </div>
+            {(() => {
+              const isUrl = selectedEvidence.fileFormat?.toLowerCase() === "url" || selectedEvidence.fileFormat?.toLowerCase() === "link"
+              if (isUrl) {
+                return (
+                  <div className="p-3.5 border border-blue-200 rounded-xl bg-blue-50/10 space-y-3">
+                    <div className="flex justify-between items-center pb-2 border-b border-blue-100">
+                      <div className="flex items-center gap-1.5">
+                        <IconLink size={16} className="text-blue-700" />
+                        <Text fw={700} size="xs" className="text-blue-900">
+                          Đường liên kết minh chứng:
+                        </Text>
+                      </div>
+                      <Badge variant="light" color="blue" size="sm">
+                        LIÊN KẾT
+                      </Badge>
+                    </div>
+                    
+                    <div className="flex justify-between items-center gap-2">
+                      <Text size="xs" fw={600} className="text-blue-700 break-all bg-white/95 p-2.5 rounded-lg border border-blue-100 flex-1 select-all">
+                        {selectedEvidence.urlFile}
+                      </Text>
+                      <Button 
+                        component="a"
+                        href={selectedEvidence.urlFile}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        size="xs"
+                        color="blue" 
+                        variant="light"
+                        leftSection={<IconExternalLink size={14} />}
+                      >
+                        Mở liên kết
+                      </Button>
+                    </div>
+                  </div>
+                )
+              }
+
+              return (
+                <div className="p-3.5 border border-blue-200 rounded-xl bg-blue-50/10 space-y-3">
+                  <div className="flex justify-between items-center pb-2 border-b border-blue-100">
+                    <div className="flex items-center gap-1.5">
+                      <IconFileText size={16} className="text-blue-700" />
+                      <Text fw={700} size="xs" className="text-blue-900">
+                        Tệp minh chứng đính kèm:
+                      </Text>
+                    </div>
+                    <Badge variant="light" color="blue" size="sm">
+                      {selectedEvidence.fileFormat ? selectedEvidence.fileFormat.toUpperCase() : "Không rõ"}
+                    </Badge>
+                  </div>
+                  
+                  <div className="flex justify-between items-center gap-2">
+                    <Text size="xs" fw={600} className="text-slate-700 font-mono break-all bg-white/90 p-2.5 rounded-lg border border-blue-100 flex-1">
+                      {selectedEvidence.originalFileName || "Chưa cập nhật tên tệp tin"}
+                    </Text>
+                    <Button 
+                      size="xs"
+                      color="teal" 
+                      variant="light"
+                      leftSection={<IconDownload size={14} />}
+                      onClick={() => handleDownload(selectedEvidence.urlFile, selectedEvidence.originalFileName)}
+                    >
+                      Tải về
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Text fw={700} size="xs" className="text-blue-900 flex items-center gap-1">
+                        <IconEye size={14} className="text-blue-600" /> Xem trực tuyến nội dung tệp:
+                      </Text>
+                      {selectedEvidence.urlFile && selectedEvidence.urlFile !== "#" && (
+                        <a 
+                          href={selectedEvidence.urlFile} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:underline flex items-center gap-1 font-semibold"
+                        >
+                          <IconExternalLink size={12} />
+                          Mở trong tab mới
+                        </a>
+                      )}
+                    </div>
+                    <div className="overflow-hidden flex justify-center bg-white rounded-lg border border-slate-200 p-2.5 min-h-[220px]">
+                      {(() => {
+                        const getExtension = () => {
+                          if (selectedEvidence.originalFileName) {
+                            const parts = selectedEvidence.originalFileName.split(".")
+                            if (parts.length > 1) {
+                              const extension = parts.pop()?.toLowerCase() || ""
+                              if (extension) return extension
+                            }
+                          }
+                          const rawFormat = selectedEvidence.fileFormat ? selectedEvidence.fileFormat.toLowerCase() : ""
+                          if (rawFormat.includes("/")) {
+                            const subType = rawFormat.split("/")[1]
+                            if (subType.includes("word") || subType.includes("document")) return "docx"
+                            if (subType.includes("sheet") || subType.includes("excel") || subType === "xlsx" || subType === "xls") return "xlsx"
+                            if (subType.includes("presentation") || subType.includes("powerpoint") || subType === "pptx" || subType === "ppt") return "pptx"
+                            return subType
+                          }
+                          return rawFormat.replace(/^\./, "")
+                        }
+                        const ext = getExtension()
+                        const url = selectedEvidence.urlFile
+                        if (!url || url === "#") {
+                          return <Text size="xs" c="red" className="text-center my-auto">Không tìm thấy đường dẫn tệp tin thực tế.</Text>
+                        }
+                        if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) {
+                          return (
+                            <img 
+                              src={url} 
+                              alt={selectedEvidence.title} 
+                              className="max-h-[300px] object-contain rounded-md" 
+                            />
+                          )
+                        } else if (ext === "pdf") {
+                          return (
+                            <iframe 
+                              src={url} 
+                              title={selectedEvidence.title} 
+                              className="w-full h-[320px] border-0 rounded-md" 
+                            />
+                          )
+                        } else if (["docx", "doc", "xlsx", "xls", "pptx", "ppt"].includes(ext)) {
+                          return (
+                            <div className="w-full space-y-1.5">
+                              <iframe 
+                                src={`https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`} 
+                                title={selectedEvidence.title} 
+                                className="w-full h-[280px] border-0 rounded-md" 
+                              />
+                              <Text size="10px" c="dimmed" className="text-center block font-medium">
+                                Nội dung tải trực tuyến từ Office Preview.
+                              </Text>
+                            </div>
+                          )
+                        } else {
+                          return (
+                            <div className="text-center my-auto p-4 space-y-2">
+                              <Text size="xs" c="dimmed">Không hỗ trợ hiển thị xem trước định dạng .{ext}</Text>
+                              <a 
+                                href={url} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="text-xs text-blue-600 hover:underline font-semibold flex items-center justify-center gap-1"
+                              >
+                                <IconExternalLink size={12} /> Tải tệp xuống hoặc mở rộng
+                              </a>
+                            </div>
+                          )
+                        }
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
 
             {selectedEvidence.reviewComment && (
               <Alert color="blue" title="Nhận xét từ Tổ trưởng / BGH">
@@ -1479,123 +1725,9 @@ export default function TeacherDashboard({
               </Alert>
             )}
 
-            <div className="pt-2 flex flex-col gap-2">
-              <div className="flex gap-2">
-                <Button 
-                  className="flex-1"
-                  color="blue" 
-                  variant="light"
-                  leftSection={<IconEye size={16} />}
-                  onClick={() => setShowPreview(!showPreview)}
-                >
-                  {showPreview ? "Ẩn nội dung xem trước" : "Xem trực tuyến minh chứng"}
-                </Button>
-                <Button 
-                  className="flex-1"
-                  color="teal" 
-                  variant="outline"
-                  leftSection={<IconDownload size={16} />}
-                  onClick={() => handleDownload(selectedEvidence.urlFile, selectedEvidence.originalFileName)}
-                >
-                  Tải về máy
-                </Button>
-              </div>
-
-              {showPreview && (
-                <div className="mt-2 p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-3">
-                  <div className="flex justify-between items-center pb-2 border-b border-slate-200">
-                    <Text fw={600} size="xs" className="text-slate-700">Trình xem trực tuyến:</Text>
-                    <a 
-                      href={selectedEvidence.urlFile} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-xs text-blue-600 hover:underline flex items-center gap-1 font-semibold"
-                    >
-                      <IconExternalLink size={12} />
-                      Mở trong tab mới
-                    </a>
-                  </div>
-                  
-                  <div className="overflow-hidden flex justify-center bg-white rounded-md border border-slate-200 p-2 min-h-[250px]">
-                    {(() => {
-                      const getExtension = () => {
-                        if (selectedEvidence.originalFileName) {
-                          const parts = selectedEvidence.originalFileName.split(".")
-                          if (parts.length > 1) {
-                            const extension = parts.pop()?.toLowerCase() || ""
-                            if (extension) return extension
-                          }
-                        }
-                        const rawFormat = selectedEvidence.fileFormat ? selectedEvidence.fileFormat.toLowerCase() : ""
-                        if (rawFormat.includes("/")) {
-                          const subType = rawFormat.split("/")[1]
-                          if (subType.includes("word") || subType.includes("document")) return "docx"
-                          if (subType.includes("sheet") || subType.includes("excel") || subType === "xlsx" || subType === "xls") return "xlsx"
-                          if (subType.includes("presentation") || subType.includes("powerpoint") || subType === "pptx" || subType === "ppt") return "pptx"
-                          return subType
-                        }
-                        return rawFormat.replace(/^\./, "")
-                      }
-                      const ext = getExtension()
-                      const url = selectedEvidence.urlFile
-                      if (!url || url === "#") {
-                        return <Text size="xs" c="red" className="text-center my-auto">Không tìm thấy đường dẫn tệp tin thực tế.</Text>
-                      }
-                      if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) {
-                        return (
-                          <img 
-                            src={url} 
-                            alt={selectedEvidence.title} 
-                            className="max-h-[350px] object-contain rounded" 
-                          />
-                        )
-                      } else if (ext === "pdf") {
-                        return (
-                          <iframe 
-                            src={url} 
-                            title={selectedEvidence.title} 
-                            className="w-full h-[400px] border-0" 
-                          />
-                        )
-                      } else if (["docx", "doc", "xlsx", "xls", "pptx", "ppt"].includes(ext)) {
-                        return (
-                          <div className="w-full space-y-2">
-                            <iframe 
-                              src={`https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`} 
-                              title={selectedEvidence.title} 
-                              className="w-full h-[350px] border-0" 
-                            />
-                            <Text size="10px" c="dimmed" className="text-center block">
-                              Mẹo: Nếu văn bản tải chậm hoặc không hiển thị, vui lòng nhấn "Tải về máy" hoặc "Mở trong tab mới" để xem.
-                            </Text>
-                          </div>
-                        )
-                      } else {
-                        return (
-                          <div className="text-center my-auto p-4 space-y-2">
-                            <IconFileText size={40} className="text-slate-400 mx-auto" />
-                            <Text size="xs" c="dimmed">Không hỗ trợ xem trước trực tiếp định dạng này ({ext.toUpperCase()}).</Text>
-                            <Button 
-                              size="xs" 
-                              variant="light" 
-                              color="blue" 
-                              onClick={() => window.open(url, "_blank")}
-                            >
-                              Mở bằng trình duyệt
-                            </Button>
-                          </div>
-                        )
-                      }
-                    })()}
-                  </div>
-                </div>
-              )}
-            </div>
-
             <div className="pt-2 flex justify-end">
-              <Button size="xs" onClick={() => {
+              <Button size="sm" onClick={() => {
                 setSelectedEvidence(null)
-                setShowPreview(false)
               }}>
                 Đóng
               </Button>
