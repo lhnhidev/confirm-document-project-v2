@@ -26,6 +26,13 @@ export const EvidenceStatus = {
 
 export type EvidenceStatus = (typeof EvidenceStatus)[keyof typeof EvidenceStatus]
 
+export interface AttachmentItem {
+  name: string
+  url: string
+  format: string
+  size: number
+}
+
 export interface EvidenceItem {
   id: string
   evidenceId: string
@@ -47,4 +54,5 @@ export interface EvidenceItem {
   criteriaName: string
   reviewComment?: string
   updatedAt?: string
+  attachments?: AttachmentItem[]
 }

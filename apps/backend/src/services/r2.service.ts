@@ -44,7 +44,13 @@ export async function uploadFilesToR2(
   fieldCode: string,
   criteriaId: string,
   files: Express.Multer.File[]
-): Promise<{ urlFile: string; fileNames: string; fileFormats: string; totalSize: number }> {
+): Promise<{ 
+  urlFile: string; 
+  fileNames: string; 
+  fileFormats: string; 
+  totalSize: number;
+  uploadedFiles: { name: string; url: string; format: string; size: number }[];
+}> {
   const client = getS3Client();
   const bucketName = process.env.R2_BUCKET_NAME || process.env.CLOUDFLARE_R2_BUCKET_NAME || "confirm-documents";
   const accountId = process.env.R2_ACCOUNT_ID || process.env.CLOUDFLARE_R2_ACCOUNT_ID || "";
@@ -69,6 +75,7 @@ export async function uploadFilesToR2(
   const fileNamesArr: string[] = [];
   const fileFormatsArr: string[] = [];
   let totalSize = 0;
+  const uploadedFilesList: { name: string; url: string; format: string; size: number }[] = [];
 
   for (const file of files) {
     fileNamesArr.push(file.originalname);
@@ -77,6 +84,7 @@ export async function uploadFilesToR2(
 
     const uniqueFileName = `${Date.now()}-${slugify(file.originalname)}`;
     const objectKey = `${folderPath}${uniqueFileName}`;
+    let fileUrl = "#";
 
     if (client) {
       try {
@@ -104,13 +112,14 @@ export async function uploadFilesToR2(
         }));
 
         const publicDomain = process.env.R2_PUBLIC_DOMAIN || process.env.CLOUDFLARE_R2_PUBLIC_DOMAIN || (accountId ? `https://pub-${accountId}.r2.dev/${bucketName}` : "https://pub-r2.example.com");
-        const fileUrl = `${publicDomain}/${objectKey}`;
+        fileUrl = `${publicDomain}/${objectKey}`;
         if (primaryUrl === "#") {
           primaryUrl = fileUrl;
         }
       } catch (err) {
         console.error("❌ Cloudflare R2 Upload Error:", err);
         const fallbackUrl = `https://r2.cloudflare.com/${objectKey}`;
+        fileUrl = fallbackUrl;
         if (primaryUrl === "#") {
           primaryUrl = fallbackUrl;
         }
@@ -119,10 +128,18 @@ export async function uploadFilesToR2(
       // Simulation mode when R2 credentials are not yet set
       console.log(`[Cloudflare R2 Simulation] Target Folder: ${folderPath}, File: ${file.originalname}`);
       const simUrl = `https://r2.storage.simulated/${objectKey}`;
+      fileUrl = simUrl;
       if (primaryUrl === "#") {
         primaryUrl = simUrl;
       }
     }
+
+    uploadedFilesList.push({
+      name: file.originalname,
+      url: fileUrl,
+      format: file.mimetype || "application/pdf",
+      size: file.size || 0
+    });
   }
 
   return {
@@ -130,6 +147,7 @@ export async function uploadFilesToR2(
     fileNames: fileNamesArr.join(", "),
     fileFormats: fileFormatsArr[0] || "application/pdf",
     totalSize: totalSize || 1024000,
+    uploadedFiles: uploadedFilesList,
   };
 }
 

@@ -92,6 +92,20 @@ const formatEvidenceItem = (e: any, fallbackUser?: any) => {
     }
   }
 
+  const attachments = (e.attachments && e.attachments.length > 0)
+    ? e.attachments.map((att: any) => ({
+        name: att.name,
+        url: ensureCorrectPublicUrl(att.url),
+        format: att.format,
+        size: att.size
+      }))
+    : (e.urlFile ? [{
+        name: e.originalFileName || "Minh chứng",
+        url: ensureCorrectPublicUrl(e.urlFile),
+        format: e.fileFormat || "unknown",
+        size: e.fileSize || 0
+      }] : []);
+
   return {
     id: e._id ? e._id.toString() : e.id,
     evidenceId: e.evidenceId,
@@ -99,10 +113,10 @@ const formatEvidenceItem = (e: any, fallbackUser?: any) => {
     description: e.description || "",
     standardName,
     criteriaName,
-    originalFileName: e.originalFileName,
-    fileFormat: e.fileFormat,
-    fileSize: e.fileSize,
-    urlFile: ensureCorrectPublicUrl(e.urlFile),
+    originalFileName: e.originalFileName || (attachments.length > 0 ? attachments.map(a => a.name).join(", ") : ""),
+    fileFormat: e.fileFormat || (attachments.length > 0 ? attachments[0].format : ""),
+    fileSize: e.fileSize || (attachments.length > 0 ? attachments.reduce((acc, a) => acc + a.size, 0) : 0),
+    urlFile: e.urlFile ? ensureCorrectPublicUrl(e.urlFile) : (attachments.length > 0 ? ensureCorrectPublicUrl(attachments[0].url) : "#"),
     currentStatus: e.currentStatus,
     date: e.date ? new Date(e.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
     submittedBy: {
@@ -113,6 +127,7 @@ const formatEvidenceItem = (e: any, fallbackUser?: any) => {
     },
     reviewComment: e.reviewComment || "",
     updatedAt: e.updatedAt ? new Date(e.updatedAt).toISOString() : new Date().toISOString(),
+    attachments,
   };
 };
 
@@ -459,40 +474,7 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response) => {
         .populate("fieldId", "fieldName fieldCode criteria");
 
       if (dbEvidences && dbEvidences.length > 0) {
-        formattedEvidences = dbEvidences.map((e: any) => {
-          let standardName = e.fieldId?.fieldName || "Tiêu chuẩn sư phạm";
-          let criteriaName = "Tiêu chí sư phạm";
-
-          if (e.fieldId && e.fieldId.criteria) {
-            const crit = e.fieldId.criteria.find((c: any) => c._id.toString() === e.criterionId?.toString());
-            if (crit) {
-              criteriaName = `${crit.criteriaId}. ${crit.criteriaName}`;
-            }
-          }
-
-          return {
-            id: e._id.toString(),
-            evidenceId: e.evidenceId,
-            title: e.title,
-            description: e.description || "",
-            standardName,
-            criteriaName,
-            originalFileName: e.originalFileName,
-            fileFormat: e.fileFormat,
-            fileSize: e.fileSize,
-            urlFile: ensureCorrectPublicUrl(e.urlFile),
-            currentStatus: e.currentStatus,
-            date: new Date(e.date).toISOString().split("T")[0],
-            submittedBy: {
-              userId: e.submittedBy?.userId || "USR-000",
-              fullName: e.submittedBy?.fullName || "Giáo viên",
-              email: e.submittedBy?.email || "",
-              departmentName: e.submittedBy?.departmentName || "Tổng hợp",
-            },
-            reviewComment: e.reviewComment || "",
-            updatedAt: e.updatedAt ? new Date(e.updatedAt).toISOString() : new Date().toISOString(),
-          };
-        });
+        formattedEvidences = dbEvidences.map((e: any) => formatEvidenceItem(e));
       }
     } catch {
       formattedEvidences = [];
@@ -627,6 +609,16 @@ router.post("/", authenticateToken, upload.array("files", 10), async (req: AuthR
     const { title, description, standardName, fieldCode, criteriaName, criteriaId, uploadType, evidenceLink } = req.body;
     const files = (req.files as Express.Multer.File[]) || [];
 
+    // Enforce 5MB total file size limit
+    const maxSizeBytes = 5 * 1024 * 1024;
+    const totalFilesSize = files.reduce((acc, f) => acc + f.size, 0);
+    if (totalFilesSize > maxSizeBytes) {
+      return res.status(400).json({
+        success: false,
+        message: "Tổng kích thước tệp tải lên vượt quá giới hạn 5MB!",
+      });
+    }
+
     const dbUser = await User.findOne({
       $or: [
         { email: user.email.toLowerCase() },
@@ -646,30 +638,86 @@ router.post("/", authenticateToken, upload.array("files", 10), async (req: AuthR
       major: user.departmentName,
     };
 
-    let r2Result = {
+    const parsedLinks: string[] = [];
+    if (evidenceLink && evidenceLink.trim()) {
+      parsedLinks.push(evidenceLink.trim());
+    }
+    if (req.body.links) {
+      try {
+        const temp = JSON.parse(req.body.links);
+        if (Array.isArray(temp)) {
+          temp.forEach((l: any) => {
+            if (typeof l === "string" && l.trim()) parsedLinks.push(l.trim());
+          });
+        }
+      } catch {
+        if (typeof req.body.links === "string" && req.body.links.trim()) {
+          parsedLinks.push(req.body.links.trim());
+        } else if (Array.isArray(req.body.links)) {
+          req.body.links.forEach((l: any) => {
+            if (typeof l === "string" && l.trim()) parsedLinks.push(l.trim());
+          });
+        }
+      }
+    }
+
+    let uploadedFiles: { name: string; url: string; format: string; size: number }[] = [];
+    let legacyResult = {
       urlFile: "https://example.com/files/minhchung.pdf",
-      fileNames: req.body.originalFileName || "minh_chung.pdf",
-      fileFormats: req.body.fileFormat || "application/pdf",
-      totalSize: Number(req.body.fileSize) || 1024000,
+      fileNames: "minh_chung.pdf",
+      fileFormats: "application/pdf",
+      totalSize: 1024000,
     };
 
-    if (uploadType === "link" && evidenceLink) {
-      let fileName = "Liên kết ngoài";
-      try {
-        const urlObj = new URL(evidenceLink);
-        fileName = `Liên kết (${urlObj.hostname})`;
-      } catch {
-        fileName = "Liên kết ngoài";
-      }
-      r2Result = {
-        urlFile: evidenceLink,
-        fileNames: fileName,
-        fileFormats: "url",
-        totalSize: 0,
+    if (files.length > 0) {
+      const uploadRes = await uploadFilesToR2(userInfoForR2, fieldCode || "I", criteriaId || "TC101", files);
+      uploadedFiles = uploadRes.uploadedFiles || [];
+      legacyResult = {
+        urlFile: uploadRes.urlFile,
+        fileNames: uploadRes.fileNames,
+        fileFormats: uploadRes.fileFormats,
+        totalSize: uploadRes.totalSize,
       };
-    } else if (files.length > 0) {
-      r2Result = await uploadFilesToR2(userInfoForR2, fieldCode || "I", criteriaId || "TC101", files);
     }
+
+    const fileAttachments = uploadedFiles.map(f => ({
+      name: f.name,
+      url: f.url,
+      format: f.format,
+      size: f.size,
+    }));
+
+    const linkAttachments = parsedLinks.map(link => {
+      let hostname = "Liên kết ngoài";
+      try {
+        const urlObj = new URL(link);
+        hostname = `Liên kết (${urlObj.hostname})`;
+      } catch {
+        // ignore
+      }
+      return {
+        name: hostname,
+        url: link,
+        format: "url",
+        size: 0,
+      };
+    });
+
+    const finalAttachments = [...fileAttachments, ...linkAttachments];
+    if (finalAttachments.length === 0) {
+      finalAttachments.push({
+        name: "Liên kết ngoài",
+        url: evidenceLink || "https://example.com",
+        format: "url",
+        size: 0,
+      });
+    }
+
+    const primaryAttachment = finalAttachments[0];
+    const legacyUrl = primaryAttachment.url;
+    const legacyFileName = finalAttachments.map(a => a.name).join(", ");
+    const legacyFormat = primaryAttachment.format;
+    const legacySize = finalAttachments.reduce((acc, a) => acc + (a.size || 0), 0);
 
     if (dbUser) {
       let field = await Field.findOne({ user: dbUser._id, fieldName: standardName });
@@ -702,10 +750,11 @@ router.post("/", authenticateToken, upload.array("files", 10), async (req: AuthR
         title: title || "Minh chứng mới",
         description: description || "",
         date: new Date(),
-        originalFileName: r2Result.fileNames,
-        fileFormat: r2Result.fileFormats,
-        fileSize: r2Result.totalSize,
-        urlFile: r2Result.urlFile,
+        originalFileName: legacyFileName,
+        fileFormat: legacyFormat,
+        fileSize: legacySize,
+        urlFile: legacyUrl,
+        attachments: finalAttachments,
         currentStatus: EvidenceStatus.PENDING,
         submittedBy: dbUser._id,
         fieldId: field?._id,
@@ -716,26 +765,7 @@ router.post("/", authenticateToken, upload.array("files", 10), async (req: AuthR
       dbUser.evidences.push(createdEv._id as Types.ObjectId);
       await dbUser.save();
 
-      const newEvFormatted = {
-        id: createdEv._id.toString(),
-        evidenceId: createdEv.evidenceId,
-        title: createdEv.title,
-        description: createdEv.description,
-        standardName: field?.fieldName || standardName,
-        criteriaName: criteriaName || "Tiêu chí mới",
-        originalFileName: createdEv.originalFileName,
-        fileFormat: createdEv.fileFormat,
-        fileSize: createdEv.fileSize,
-        urlFile: ensureCorrectPublicUrl(createdEv.urlFile),
-        currentStatus: createdEv.currentStatus,
-        date: new Date(createdEv.date).toISOString().split("T")[0],
-        submittedBy: {
-          userId: dbUser.userId,
-          fullName: dbUser.fullName,
-          email: dbUser.email,
-          departmentName: dbUser.departmentName || "Tổng hợp",
-        },
-      };
+      const newEvFormatted = formatEvidenceItem(createdEv, dbUser);
 
       return res.status(201).json({
         success: true,
@@ -755,10 +785,11 @@ router.post("/", authenticateToken, upload.array("files", 10), async (req: AuthR
       description: description || "",
       standardName: standardName || "I. NĂNG LỰC SỬ DỤNG CÔNG NGHỆ SỐ",
       criteriaName: criteriaName || "TC101. Vận hành thiết bị số phục vụ công việc chuyên môn",
-      originalFileName: r2Result.fileNames,
-      fileFormat: r2Result.fileFormats,
-      fileSize: r2Result.totalSize,
-      urlFile: ensureCorrectPublicUrl(r2Result.urlFile),
+      originalFileName: legacyFileName,
+      fileFormat: legacyFormat,
+      fileSize: legacySize,
+      urlFile: ensureCorrectPublicUrl(legacyUrl),
+      attachments: finalAttachments,
       currentStatus: EvidenceStatus.PENDING,
       date: new Date().toISOString().split("T")[0],
       submittedBy: {
@@ -933,6 +964,16 @@ router.put("/:id", authenticateToken, upload.array("files", 10), async (req: Aut
     const { title, description, uploadType, evidenceLink } = req.body;
     const files = req.files as Express.Multer.File[];
 
+    // Enforce 5MB total file size limit for new files
+    const maxSizeBytes = 5 * 1024 * 1024;
+    const totalFilesSize = files ? files.reduce((acc, f) => acc + f.size, 0) : 0;
+    if (totalFilesSize > maxSizeBytes) {
+      return res.status(400).json({
+        success: false,
+        message: "Tổng kích thước tệp tải lên vượt quá giới hạn 5MB!",
+      });
+    }
+
     let dbEvidence = null;
     try {
       if (typeof id === "string" && Types.ObjectId.isValid(id)) {
@@ -945,22 +986,31 @@ router.put("/:id", authenticateToken, upload.array("files", 10), async (req: Aut
       dbEvidence = null;
     }
 
-    let r2Result = { fileNames: "", fileFormats: "", totalSize: 0, urlFile: "#" };
-    if (uploadType === "link" && evidenceLink) {
-      let fileName = "Liên kết ngoài";
+    const parsedLinks: string[] = [];
+    if (evidenceLink && evidenceLink.trim()) {
+      parsedLinks.push(evidenceLink.trim());
+    }
+    if (req.body.links) {
       try {
-        const urlObj = new URL(evidenceLink);
-        fileName = `Liên kết (${urlObj.hostname})`;
+        const temp = JSON.parse(req.body.links);
+        if (Array.isArray(temp)) {
+          temp.forEach((l: any) => {
+            if (typeof l === "string" && l.trim()) parsedLinks.push(l.trim());
+          });
+        }
       } catch {
-        fileName = "Liên kết ngoài";
+        if (typeof req.body.links === "string" && req.body.links.trim()) {
+          parsedLinks.push(req.body.links.trim());
+        } else if (Array.isArray(req.body.links)) {
+          req.body.links.forEach((l: any) => {
+            if (typeof l === "string" && l.trim()) parsedLinks.push(l.trim());
+          });
+        }
       }
-      r2Result = {
-        urlFile: evidenceLink,
-        fileNames: fileName,
-        fileFormats: "url",
-        totalSize: 0,
-      };
-    } else if (files && files.length > 0) {
+    }
+
+    let uploadedFiles: { name: string; url: string; format: string; size: number }[] = [];
+    if (files && files.length > 0) {
       const user = req.user;
       const userInfoForR2 = {
         userId: user?.userId || "USR-001",
@@ -977,12 +1027,68 @@ router.put("/:id", authenticateToken, upload.array("files", 10), async (req: Aut
       if (dbEvidence?.criterionId) {
         criteriaIdStr = dbEvidence.criterionId.toString();
       }
-      r2Result = await uploadMultipleFilesToR2(
+      const uploadRes = await uploadFilesToR2(
         userInfoForR2,
         fieldCode,
         criteriaIdStr,
         files
       );
+      uploadedFiles = uploadRes.uploadedFiles || [];
+    }
+
+    // Parse existing attachments to keep
+    let existingAttachments: any[] = [];
+    let hasExistingAttachmentsField = false;
+    if (req.body.existingAttachments) {
+      hasExistingAttachmentsField = true;
+      try {
+        const parsed = JSON.parse(req.body.existingAttachments);
+        if (Array.isArray(parsed)) {
+          existingAttachments = parsed;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // Construct final list of attachments
+    let finalAttachments = dbEvidence ? dbEvidence.attachments || [] : [];
+    if (files?.length > 0 || parsedLinks.length > 0 || hasExistingAttachmentsField) {
+      const fileAttachments = uploadedFiles.map(f => ({
+        name: f.name,
+        url: f.url,
+        format: f.format,
+        size: f.size,
+      }));
+
+      const linkAttachments = parsedLinks.map(link => {
+        let hostname = "Liên kết ngoài";
+        try {
+          const urlObj = new URL(link);
+          hostname = `Liên kết (${urlObj.hostname})`;
+        } catch {
+          // ignore
+        }
+        return {
+          name: hostname,
+          url: link,
+          format: "url",
+          size: 0,
+        };
+      });
+
+      finalAttachments = [...existingAttachments, ...fileAttachments, ...linkAttachments];
+    }
+
+    if (finalAttachments.length === 0 && dbEvidence) {
+      finalAttachments = dbEvidence.attachments && dbEvidence.attachments.length > 0
+        ? dbEvidence.attachments
+        : (dbEvidence.urlFile ? [{
+            name: dbEvidence.originalFileName || "Minh chứng",
+            url: dbEvidence.urlFile,
+            format: dbEvidence.fileFormat || "unknown",
+            size: dbEvidence.fileSize || 0
+          }] : []);
     }
 
     if (dbEvidence) {
@@ -990,11 +1096,13 @@ router.put("/:id", authenticateToken, upload.array("files", 10), async (req: Aut
       if (description !== undefined) dbEvidence.description = description;
       dbEvidence.currentStatus = EvidenceStatus.PENDING;
 
-      if ((uploadType === "link" && evidenceLink) || (files && files.length > 0 && r2Result.urlFile !== "#")) {
-        dbEvidence.originalFileName = r2Result.fileNames;
-        dbEvidence.fileFormat = r2Result.fileFormats;
-        dbEvidence.fileSize = r2Result.totalSize;
-        dbEvidence.urlFile = r2Result.urlFile;
+      if (finalAttachments.length > 0) {
+        dbEvidence.attachments = finalAttachments;
+        const primary = finalAttachments[0];
+        dbEvidence.originalFileName = finalAttachments.map(a => a.name).join(", ");
+        dbEvidence.fileFormat = primary.format;
+        dbEvidence.fileSize = finalAttachments.reduce((acc, a) => acc + (a.size || 0), 0);
+        dbEvidence.urlFile = primary.url;
       }
 
       await dbEvidence.save();
@@ -1010,16 +1118,12 @@ router.put("/:id", authenticateToken, upload.array("files", 10), async (req: Aut
         }
       }
 
+      const updatedEvFormatted = formatEvidenceItem(dbEvidence);
+
       return res.status(200).json({
         success: true,
         message: "Cập nhật minh chứng thành công!",
-        evidence: {
-          id: dbEvidence._id.toString(),
-          evidenceId: dbEvidence.evidenceId,
-          title: dbEvidence.title,
-          description: dbEvidence.description,
-          currentStatus: dbEvidence.currentStatus
-        }
+        evidence: updatedEvFormatted
       });
     }
 
@@ -1029,11 +1133,13 @@ router.put("/:id", authenticateToken, upload.array("files", 10), async (req: Aut
       if (description !== undefined) inMemoryEvidences[itemIndex].description = description;
       inMemoryEvidences[itemIndex].currentStatus = EvidenceStatus.PENDING;
 
-      if ((uploadType === "link" && evidenceLink) || (files && files.length > 0 && r2Result.urlFile !== "#")) {
-        inMemoryEvidences[itemIndex].originalFileName = r2Result.fileNames;
-        inMemoryEvidences[itemIndex].fileFormat = r2Result.fileFormats;
-        inMemoryEvidences[itemIndex].fileSize = r2Result.totalSize;
-        inMemoryEvidences[itemIndex].urlFile = r2Result.urlFile;
+      if (finalAttachments.length > 0) {
+        inMemoryEvidences[itemIndex].attachments = finalAttachments;
+        const primary = finalAttachments[0];
+        inMemoryEvidences[itemIndex].originalFileName = finalAttachments.map(a => a.name).join(", ");
+        inMemoryEvidences[itemIndex].fileFormat = primary.format;
+        inMemoryEvidences[itemIndex].fileSize = finalAttachments.reduce((acc, a) => acc + (a.size || 0), 0);
+        inMemoryEvidences[itemIndex].urlFile = primary.url;
       }
 
       return res.status(200).json({

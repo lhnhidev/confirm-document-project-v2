@@ -46,6 +46,7 @@ import {
   IconLink,
   IconEdit,
   IconTrash,
+  IconArchive,
   IconUsers,
   IconCalendar,
   IconCalendarX
@@ -205,7 +206,10 @@ export default function TeacherDashboard({
   const [description, setDescription] = useState("")
   const [standardName, setStandardName] = useState("NĂNG LỰC SỬ DỤNG CÔNG NGHỆ SỐ")
   const [criteriaName, setCriteriaName] = useState("Vận hành thiết bị số phục vụ công việc chuyên môn")
-  const [selectedFiles, setSelectedFiles] = useState<File | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [evidenceLinks, setEvidenceLinks] = useState<string[]>([])
+  const [currentLink, setCurrentLink] = useState("")
+  const [existingAttachments, setExistingAttachments] = useState<AttachmentItem[]>([])
   const [uploadType, setUploadType] = useState<"file" | "link">("file")
   const [evidenceLink, setEvidenceLink] = useState("")
   const [fileError, setFileError] = useState<string | null>(null)
@@ -520,17 +524,20 @@ export default function TeacherDashboard({
       : item.criteriaName
     setCriteriaName(cleanCriteriaName)
 
-    setSelectedFiles(null)
+    setSelectedFiles([])
+    setEvidenceLinks([])
+    setCurrentLink("")
     setFileError(null)
 
-    const format = item.fileFormat?.toLowerCase()
-    if (format === "url" || format === "link") {
-      setUploadType("link")
-      setEvidenceLink(item.urlFile)
-    } else {
-      setUploadType("file")
-      setEvidenceLink("")
-    }
+    const initialAttachments = item.attachments && item.attachments.length > 0
+      ? item.attachments
+      : (item.urlFile && item.urlFile !== "#" ? [{
+          name: item.originalFileName || "Minh chứng",
+          url: item.urlFile,
+          format: item.fileFormat || "unknown",
+          size: item.fileSize || 0
+        }] : []);
+    setExistingAttachments(initialAttachments)
 
     const latestFields = await getFieldsAndCriteria()
     if (latestFields && latestFields.length > 0) {
@@ -609,10 +616,16 @@ export default function TeacherDashboard({
       })
     : []
 
-  const handleFileChange = (file: File | null) => {
+  const handleFileChange = (files: File[] | File | null) => {
     setFileError(null)
-    if (!file) {
-      setSelectedFiles(null)
+    if (!files) {
+      setSelectedFiles([])
+      return
+    }
+
+    const filesArray = Array.isArray(files) ? files : [files]
+    if (filesArray.length === 0) {
+      setSelectedFiles([])
       return
     }
 
@@ -628,32 +641,72 @@ export default function TeacherDashboard({
       "image/webp"
     ]
 
-    const ext = file.name.split(".").pop()?.toLowerCase()
-    const isAllowedExt = ["pdf", "doc", "docx", "txt", "jpg", "jpeg", "png", "gif", "webp"].includes(ext || "")
-    if (!allowedTypes.includes(file.type) && !isAllowedExt) {
-      setFileError(`Tệp "${file.name}" không đúng định dạng cho phép (PDF, DOCX, JPG, PNG, TXT).`)
-      return
+    for (const file of filesArray) {
+      const ext = file.name.split(".").pop()?.toLowerCase()
+      const isAllowedExt = ["pdf", "doc", "docx", "txt", "jpg", "jpeg", "png", "gif", "webp"].includes(ext || "")
+      if (!allowedTypes.includes(file.type) && !isAllowedExt) {
+        setFileError(`Tệp "${file.name}" không đúng định dạng cho phép (PDF, DOCX, JPG, PNG, TXT).`)
+        return
+      }
     }
 
+    const totalSize = filesArray.reduce((acc, file) => acc + file.size, 0)
     const maxBytes = 5 * 1024 * 1024 // 5MB
-    if (file.size > maxBytes) {
-      setFileError(`Kích thước tệp (${(file.size / (1024 * 1024)).toFixed(2)}MB) vượt quá giới hạn 5MB.`)
+    if (totalSize > maxBytes) {
+      setFileError(`Tổng kích thước các tệp tải lên (${(totalSize / (1024 * 1024)).toFixed(2)}MB) vượt quá giới hạn 5MB.`)
       return
     }
 
-    setSelectedFiles(file)
+    setSelectedFiles(filesArray)
+  }
+
+  const removeSelectedFile = (index: number) => {
+    const updated = selectedFiles.filter((_, i) => i !== index)
+    setSelectedFiles(updated)
+    const totalSize = updated.reduce((acc, f) => acc + f.size, 0)
+    if (totalSize <= 5 * 1024 * 1024) {
+      setFileError(null)
+    }
+  }
+
+  const addLinkToList = () => {
+    if (!currentLink.trim()) return
+    if (!currentLink.trim().startsWith("http://") && !currentLink.trim().startsWith("https://")) {
+      setFileError("Đường liên kết phải bắt đầu bằng http:// hoặc https://")
+      return
+    }
+    setFileError(null)
+    if (evidenceLinks.includes(currentLink.trim())) {
+      setFileError("Đường liên kết này đã có trong danh sách!")
+      return
+    }
+    setEvidenceLinks([...evidenceLinks, currentLink.trim()])
+    setCurrentLink("")
+  }
+
+  const removeLinkFromList = (index: number) => {
+    setEvidenceLinks(evidenceLinks.filter((_, i) => i !== index))
+  }
+
+  const removeExistingAttachment = (index: number) => {
+    setExistingAttachments(existingAttachments.filter((_, i) => i !== index))
   }
 
   const handleFormSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!title) return
-    if (uploadType === "file" && !editingEvidence && !selectedFiles) return
-    if (uploadType === "link" && !evidenceLink.trim()) {
-      setFileError("Vui lòng nhập đường liên kết minh chứng!")
+    
+    const totalNewFiles = selectedFiles?.length || 0
+    const totalNewLinks = evidenceLinks?.length || 0
+    const totalExisting = editingEvidence ? existingAttachments?.length || 0 : 0
+    
+    if (totalNewFiles === 0 && totalNewLinks === 0 && totalExisting === 0) {
+      setFileError("Vui lòng đính kèm ít nhất 1 tệp tin hoặc thêm 1 đường liên kết minh chứng!")
       return
     }
-    if (fileError) return
 
+    if (fileError) return
+ 
     if (!editingEvidence && isCriterionBlocked(criteriaName)) {
       let statusText = "đã được duyệt hoặc đang chờ duyệt"
       for (const f of fields) {
@@ -667,12 +720,12 @@ export default function TeacherDashboard({
       triggerNotification(`Tiêu chí này ${statusText}. Vui lòng không nộp thêm minh chứng cho tiêu chí này!`)
       return
     }
-
+ 
     const selectedFieldObj = fields.find((f) => f.fieldName === standardName) || fields[0]
     const fieldCode = selectedFieldObj ? selectedFieldObj.fieldCode : "I"
     const selectedCritObj = selectedFieldObj?.criteria.find((c) => c.criteriaName === criteriaName)
     const criteriaId = selectedCritObj ? selectedCritObj.criteriaId : "TC101"
-
+ 
     const formData = new FormData()
     formData.append("title", title)
     formData.append("description", description)
@@ -680,14 +733,21 @@ export default function TeacherDashboard({
     formData.append("fieldCode", fieldCode)
     formData.append("criteriaName", criteriaName)
     formData.append("criteriaId", criteriaId)
-    formData.append("uploadType", uploadType)
-
-    if (uploadType === "file" && selectedFiles) {
-      formData.append("files", selectedFiles)
-    } else if (uploadType === "link" && evidenceLink) {
-      formData.append("evidenceLink", evidenceLink.trim())
+ 
+    if (selectedFiles && selectedFiles.length > 0) {
+      selectedFiles.forEach((file) => {
+        formData.append("files", file)
+      })
     }
 
+    if (evidenceLinks && evidenceLinks.length > 0) {
+      formData.append("links", JSON.stringify(evidenceLinks))
+    }
+
+    if (editingEvidence) {
+      formData.append("existingAttachments", JSON.stringify(existingAttachments))
+    }
+ 
     let successMsg: string
     if (editingEvidence) {
       await updateEvidenceApi(editingEvidence.id || editingEvidence.evidenceId, formData)
@@ -696,21 +756,24 @@ export default function TeacherDashboard({
       await onAddEvidence(formData)
       successMsg = "Đã nộp minh chứng thành công!"
     }
-
+ 
     // Reset form and reload API stats (reset page to 1 to show newly submitted evidence)
     setTitle("")
     setDescription("")
-    setSelectedFiles(null)
+    setSelectedFiles([])
+    setEvidenceLinks([])
+    setCurrentLink("")
+    setExistingAttachments([])
     setUploadType("file")
     setEvidenceLink("")
     setFileError(null)
     setEditingEvidence(null)
     setModalOpened(false)
     setCurrentPage(1)
-
+ 
     // Tải lại danh sách minh chứng mới nhất từ backend
     await handleManualRefresh(1)
-
+ 
     // Hiển thị thông báo thành công trong 4s rồi tự động biến mất
     triggerNotification(successMsg)
   }
@@ -1291,50 +1354,127 @@ export default function TeacherDashboard({
             }}
           />
 
-          <div className="space-y-1.5">
-            <Text size="sm" fw={600} className="text-slate-800">Hình thức nộp minh chứng</Text>
-            <SegmentedControl
-              fullWidth
-              value={uploadType}
-              onChange={(value) => {
-                setUploadType(value as "file" | "link")
-                setFileError(null)
-              }}
-              data={[
-                { label: "Tải tệp tin lên", value: "file" },
-                { label: "Đường liên kết (URL)", value: "link" }
-              ]}
-              color="blue"
-              className="mb-1"
-            />
-          </div>
+          {/* DANH SÁCH FILE & LINK MIXED UPLOAD */}
+          <div className="space-y-4">
+            {/* FILE UPLOAD SECTION */}
+            <div className="space-y-2 p-3.5 border border-slate-100 rounded-xl bg-slate-50/50">
+              <FileInput
+                label="Tải tệp tin & Hình ảnh minh chứng"
+                placeholder="Chọn một hoặc nhiều tệp tin, hình ảnh (tối đa 5MB)..."
+                clearable
+                multiple
+                leftSection={<IconFileUpload size={16} />}
+                value={selectedFiles}
+                onChange={handleFileChange}
+                accept=".pdf,.doc,.docx,.txt,image/*"
+                error={fileError}
+              />
+              {selectedFiles && selectedFiles.length > 0 && (
+                <div className="space-y-1.5 mt-2">
+                  <Text size="xs" fw={700} className="text-slate-700">Tệp mới đã chọn ({selectedFiles.length}):</Text>
+                  {selectedFiles.map((f, i) => (
+                    <div key={i} className="flex justify-between items-center bg-white border border-slate-100 rounded-lg p-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <IconFileText size={14} className="text-teal-600 shrink-0" />
+                        <Text size="xs" className="text-slate-700 truncate" title={f.name}>{f.name}</Text>
+                        <Text size="10px" c="dimmed">({(f.size / (1024 * 1024)).toFixed(2)}MB)</Text>
+                      </div>
+                      <ActionIcon size="xs" color="red" variant="subtle" onClick={() => removeSelectedFile(i)}>
+                        <IconTrash size={12} />
+                      </ActionIcon>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-          {uploadType === "file" ? (
-            <FileInput
-              label="Tải tệp minh chứng mới"
-              placeholder="Chọn tệp minh chứng mới nếu muốn thay đổi (tối đa 5MB)..."
-              required={!editingEvidence}
-              clearable
-              leftSection={<IconFileUpload size={16} />}
-              value={selectedFiles || null}
-              onChange={handleFileChange}
-              accept=".pdf,.doc,.docx,.txt,image/*"
-              error={fileError}
-            />
-          ) : (
-            <TextInput
-              label="Nhập đường liên kết minh chứng"
-              placeholder="Dán link Drive, Dropbox, liên kết ngoài... (bắt đầu bằng http/https)"
-              required={!editingEvidence}
-              leftSection={<IconLink size={16} />}
-              value={evidenceLink}
-              onChange={(e) => {
-                setEvidenceLink(e.target.value)
-                setFileError(null)
-              }}
-              error={fileError}
-            />
-          )}
+            {/* LINKS SECTION */}
+            <div className="space-y-2 p-3.5 border border-slate-100 rounded-xl bg-slate-50/50">
+              <div className="flex gap-2 items-end">
+                <TextInput
+                  label="Thêm đường liên kết minh chứng (URL)"
+                  placeholder="Dán link Drive, Dropbox, video, trang web..."
+                  leftSection={<IconLink size={16} />}
+                  value={currentLink}
+                  onChange={(e) => {
+                    setCurrentLink(e.target.value)
+                    setFileError(null)
+                  }}
+                  className="flex-1"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      addLinkToList()
+                    }
+                  }}
+                />
+                <Button size="sm" color="blue" onClick={addLinkToList} variant="light">
+                  Thêm link
+                </Button>
+              </div>
+
+              {evidenceLinks.length > 0 && (
+                <div className="space-y-1.5 mt-2">
+                  <Text size="xs" fw={700} className="text-slate-700">Liên kết mới đã thêm ({evidenceLinks.length}):</Text>
+                  {evidenceLinks.map((link, i) => (
+                    <div key={i} className="flex justify-between items-center bg-white border border-slate-100 rounded-lg p-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <IconLink size={14} className="text-blue-600 shrink-0" />
+                        <Text size="xs" className="text-slate-700 truncate" title={link}>{link}</Text>
+                      </div>
+                      <ActionIcon size="xs" color="red" variant="subtle" onClick={() => removeLinkFromList(i)}>
+                        <IconTrash size={12} />
+                      </ActionIcon>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* EXISTING ATTACHMENTS (FOR EDITING) */}
+            {editingEvidence && existingAttachments.length > 0 && (
+              <div className="space-y-2 p-3.5 border border-amber-200 rounded-xl bg-amber-50/10">
+                <div className="flex items-center gap-1.5 pb-1 border-b border-amber-100">
+                  <IconArchive size={16} className="text-amber-700" />
+                  <Text fw={700} size="xs" className="text-amber-950">
+                    Tài liệu hiện tại của minh chứng ({existingAttachments.length}):
+                  </Text>
+                </div>
+                
+                <div className="space-y-1.5">
+                  {existingAttachments.map((att, i) => {
+                    const isUrl = att.format?.toLowerCase() === "url" || att.format?.toLowerCase() === "link";
+                    return (
+                      <div key={i} className="flex justify-between items-center bg-white/80 border border-amber-100 rounded-lg p-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {isUrl ? (
+                            <IconLink size={14} className="text-blue-600 shrink-0" />
+                          ) : (
+                            <IconFileText size={14} className="text-teal-600 shrink-0" />
+                          )}
+                          <Text size="xs" className="text-slate-700 truncate" title={att.name}>{att.name}</Text>
+                          {!isUrl && att.size > 0 && (
+                            <Text size="10px" c="dimmed">({(att.size / (1024 * 1024)).toFixed(2)}MB)</Text>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <ActionIcon size="xs" color="blue" variant="subtle" onClick={() => window.open(att.url, "_blank")}>
+                            <IconEye size={12} />
+                          </ActionIcon>
+                          <ActionIcon size="xs" color="red" variant="subtle" onClick={() => removeExistingAttachment(i)}>
+                            <IconTrash size={12} />
+                          </ActionIcon>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <Text size="10px" className="text-amber-700 italic">
+                  * Nhấn biểu tượng Thùng rác để gỡ bỏ tài liệu cũ khỏi minh chứng này.
+                </Text>
+              </div>
+            )}
+          </div>
 
           {editingEvidence && (editingEvidence.currentStatus === EvidenceStatusValues.NEEDS_SUPPLEMENT || editingEvidence.currentStatus === EvidenceStatusValues.PENDING) && editingEvidence.urlFile && (
             (() => {
@@ -1569,165 +1709,99 @@ export default function TeacherDashboard({
               <Text size="xs" className="text-slate-600">{selectedEvidence.criteriaName}</Text>
             </div>
 
-            {(() => {
-              const isUrl = selectedEvidence.fileFormat?.toLowerCase() === "url" || selectedEvidence.fileFormat?.toLowerCase() === "link"
-              if (isUrl) {
-                return (
-                  <div className="p-3.5 border border-blue-200 rounded-xl bg-blue-50/10 space-y-3">
-                    <div className="flex justify-between items-center pb-2 border-b border-blue-100">
-                      <div className="flex items-center gap-1.5">
-                        <IconLink size={16} className="text-blue-700" />
-                        <Text fw={700} size="xs" className="text-blue-900">
-                          Đường liên kết minh chứng:
-                        </Text>
-                      </div>
-                      <Badge variant="light" color="blue" size="sm">
-                        LIÊN KẾT
-                      </Badge>
-                    </div>
+            {/* DANH SÁCH MINH CHỨNG / TÀI LIỆU ĐÍNH KÈM (HỖN HỢP) */}
+            <div className="space-y-3">
+              <Text fw={700} size="xs" className="text-blue-950">
+                Danh sách tài liệu / minh chứng đính kèm ({selectedEvidence.attachments?.length || (selectedEvidence.urlFile ? 1 : 0)}):
+              </Text>
+              
+              <div className="space-y-2">
+                {(() => {
+                  const items = selectedEvidence.attachments && selectedEvidence.attachments.length > 0
+                    ? selectedEvidence.attachments
+                    : (selectedEvidence.urlFile && selectedEvidence.urlFile !== "#" ? [{
+                        name: selectedEvidence.originalFileName || "Minh chứng",
+                        url: selectedEvidence.urlFile,
+                        format: selectedEvidence.fileFormat || "unknown",
+                        size: selectedEvidence.fileSize || 0
+                      }] : []);
+
+                  if (items.length === 0) {
+                    return <Text size="xs" c="dimmed">Không có tệp tin hoặc liên kết đính kèm.</Text>;
+                  }
+
+                  return items.map((att, idx) => {
+                    const isUrl = att.format?.toLowerCase() === "url" || att.format?.toLowerCase() === "link";
+                    const sizeText = att.size ? `(${(att.size / (1024 * 1024)).toFixed(2)}MB)` : "";
                     
-                    <div className="flex justify-between items-center gap-2">
-                      <Text size="xs" fw={600} className="text-blue-700 break-all bg-white/95 p-2.5 rounded-lg border border-blue-100 flex-1 select-all">
-                        {selectedEvidence.urlFile}
-                      </Text>
-                      <Button 
-                        component="a"
-                        href={selectedEvidence.urlFile}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        size="xs"
-                        color="blue" 
-                        variant="light"
-                        leftSection={<IconExternalLink size={14} />}
-                      >
-                        Mở liên kết
-                      </Button>
-                    </div>
-                  </div>
-                )
-              }
-
-              return (
-                <div className="p-3.5 border border-blue-200 rounded-xl bg-blue-50/10 space-y-3">
-                  <div className="flex justify-between items-center pb-2 border-b border-blue-100">
-                    <div className="flex items-center gap-1.5">
-                      <IconFileText size={16} className="text-blue-700" />
-                      <Text fw={700} size="xs" className="text-blue-900">
-                        Tệp minh chứng đính kèm:
-                      </Text>
-                    </div>
-                    <Badge variant="light" color="blue" size="sm">
-                      {selectedEvidence.fileFormat ? selectedEvidence.fileFormat.toUpperCase() : "Không rõ"}
-                    </Badge>
-                  </div>
-                  
-                  <div className="flex justify-between items-center gap-2">
-                    <Text size="xs" fw={600} className="text-slate-700 font-mono break-all bg-white/90 p-2.5 rounded-lg border border-blue-100 flex-1">
-                      {selectedEvidence.originalFileName || "Chưa cập nhật tên tệp tin"}
-                    </Text>
-                    <Button 
-                      size="xs"
-                      color="teal" 
-                      variant="light"
-                      leftSection={<IconDownload size={14} />}
-                      onClick={() => handleDownload(selectedEvidence.urlFile, selectedEvidence.originalFileName)}
-                    >
-                      Tải về
-                    </Button>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <Text fw={700} size="xs" className="text-blue-900 flex items-center gap-1">
-                        <IconEye size={14} className="text-blue-600" /> Xem trực tuyến nội dung tệp:
-                      </Text>
-                      {selectedEvidence.urlFile && selectedEvidence.urlFile !== "#" && (
-                        <a 
-                          href={selectedEvidence.urlFile} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-xs text-blue-600 hover:underline flex items-center gap-1 font-semibold"
-                        >
-                          <IconExternalLink size={12} />
-                          Mở trong tab mới
-                        </a>
-                      )}
-                    </div>
-                    <div className="overflow-hidden flex justify-center bg-white rounded-lg border border-slate-200 p-2.5 min-h-[220px]">
-                      {(() => {
-                        const getExtension = () => {
-                          if (selectedEvidence.originalFileName) {
-                            const parts = selectedEvidence.originalFileName.split(".")
-                            if (parts.length > 1) {
-                              const extension = parts.pop()?.toLowerCase() || ""
-                              if (extension) return extension
-                            }
-                          }
-                          const rawFormat = selectedEvidence.fileFormat ? selectedEvidence.fileFormat.toLowerCase() : ""
-                          if (rawFormat.includes("/")) {
-                            const subType = rawFormat.split("/")[1]
-                            if (subType.includes("word") || subType.includes("document")) return "docx"
-                            if (subType.includes("sheet") || subType.includes("excel") || subType === "xlsx" || subType === "xls") return "xlsx"
-                            if (subType.includes("presentation") || subType.includes("powerpoint") || subType === "pptx" || subType === "ppt") return "pptx"
-                            return subType
-                          }
-                          return rawFormat.replace(/^\./, "")
-                        }
-                        const ext = getExtension()
-                        const url = selectedEvidence.urlFile
-                        if (!url || url === "#") {
-                          return <Text size="xs" c="red" className="text-center my-auto">Không tìm thấy đường dẫn tệp tin thực tế.</Text>
-                        }
-                        if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) {
-                          return (
-                            <img 
-                              src={url} 
-                              alt={selectedEvidence.title} 
-                              className="max-h-[300px] object-contain rounded-md" 
-                            />
-                          )
-                        } else if (ext === "pdf") {
-                          return (
-                            <iframe 
-                              src={url} 
-                              title={selectedEvidence.title} 
-                              className="w-full h-[320px] border-0 rounded-md" 
-                            />
-                          )
-                        } else if (["docx", "doc", "xlsx", "xls", "pptx", "ppt"].includes(ext)) {
-                          return (
-                            <div className="w-full space-y-1.5">
-                              <iframe 
-                                src={`https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`} 
-                                title={selectedEvidence.title} 
-                                className="w-full h-[280px] border-0 rounded-md" 
-                              />
-                              <Text size="10px" c="dimmed" className="text-center block font-medium">
-                                Nội dung tải trực tuyến từ Office Preview.
-                              </Text>
+                    return (
+                      <div key={idx} className="flex justify-between items-center gap-3 p-3 border border-blue-100 rounded-lg bg-blue-50/5 hover:bg-blue-50/20 transition-all">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {isUrl ? (
+                            <IconLink size={16} className="text-blue-600 shrink-0" />
+                          ) : (
+                            <IconFileText size={16} className="text-teal-600 shrink-0" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <Text size="xs" fw={600} className="text-slate-800 truncate" title={att.name}>
+                              {att.name}
+                            </Text>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <Badge size="xs" variant="outline" color={isUrl ? "blue" : "teal"}>
+                                {att.format ? att.format.toUpperCase() : "FILE"}
+                              </Badge>
+                              {!isUrl && att.size > 0 && (
+                                <Text size="10px" c="dimmed">
+                                  {sizeText}
+                                </Text>
+                              )}
                             </div>
-                          )
-                        } else {
-                          return (
-                            <div className="text-center my-auto p-4 space-y-2">
-                              <Text size="xs" c="dimmed">Không hỗ trợ hiển thị xem trước định dạng .{ext}</Text>
-                              <a 
-                                href={url} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className="text-xs text-blue-600 hover:underline font-semibold flex items-center justify-center gap-1"
+                          </div>
+                        </div>
+
+                        <div className="flex gap-1 shrink-0">
+                          {isUrl ? (
+                            <Button
+                              component="a"
+                              href={att.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              size="xs"
+                              color="blue"
+                              variant="light"
+                              leftSection={<IconExternalLink size={12} />}
+                            >
+                              Mở link
+                            </Button>
+                          ) : (
+                            <>
+                              <Button
+                                size="xs"
+                                color="teal"
+                                variant="light"
+                                leftSection={<IconDownload size={12} />}
+                                onClick={() => handleDownload(att.url, att.name)}
                               >
-                                <IconExternalLink size={12} /> Tải tệp xuống hoặc mở rộng
-                              </a>
-                            </div>
-                          )
-                        }
-                      })()}
-                    </div>
-                  </div>
-                </div>
-              )
-            })()}
+                                Tải về
+                              </Button>
+                              <Button
+                                size="xs"
+                                color="blue"
+                                variant="light"
+                                leftSection={<IconEye size={12} />}
+                                onClick={() => window.open(att.url, "_blank")}
+                              >
+                                Xem
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
 
             {selectedEvidence.reviewComment && (
               <Alert color="blue" title="Nhận xét từ Tổ trưởng / BGH">
