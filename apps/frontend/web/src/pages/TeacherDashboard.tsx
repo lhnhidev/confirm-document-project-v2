@@ -21,7 +21,7 @@ import {
   Tabs,
   Pagination,
   Transition,
-  SegmentedControl
+  Avatar
 } from "@mantine/core"
 import {
   IconFileUpload,
@@ -49,14 +49,16 @@ import {
   IconArchive,
   IconUsers,
   IconCalendar,
-  IconCalendarX
+  IconCalendarX,
+  IconMessage,
+  IconSend
 } from "@tabler/icons-react"
-import type { User, EvidenceItem, EvidenceStatus } from "../types/auth"
+import type { User, EvidenceItem, EvidenceStatus, AttachmentItem } from "../types/auth"
 import { EvidenceStatus as EvidenceStatusValues } from "../types/auth"
 import AppHeader from "../components/AppHeader"
 import CriteriaMatrixTable from "../components/CriteriaMatrixTable"
 import UserContactsTab from "../components/UserContactsTab"
-import { getTeacherSummaryApi, getMySupplementCountApi, getFieldsAndCriteria, deleteEvidenceApi, updateEvidenceApi, type TeacherSummaryData, type PaginationInfo, type FieldItem } from "../services/evidenceApi"
+import { getTeacherSummaryApi, getMySupplementCountApi, getFieldsAndCriteria, deleteEvidenceApi, updateEvidenceApi, addCommentApi, deleteCommentApi, type TeacherSummaryData, type PaginationInfo, type FieldItem } from "../services/evidenceApi"
 
 const FRONTEND_FALLBACK_FIELDS: FieldItem[] = [
   {
@@ -158,6 +160,8 @@ interface TeacherDashboardProps {
   onAddEvidence: (_payload: FormData) => void
   onLogout: () => void
   onUserUpdate?: (_updatedUser: User) => void
+  onUpdateEvidence?: (updatedItem: EvidenceItem) => void
+  hideHeader?: boolean
 }
 
 export default function TeacherDashboard({
@@ -165,14 +169,47 @@ export default function TeacherDashboard({
   evidences,
   onAddEvidence,
   onLogout,
-  onUserUpdate
+  onUserUpdate,
+  onUpdateEvidence,
+  hideHeader = false
 }: TeacherDashboardProps) {
+  const nowTime = Date.now()
   const [modalOpened, setModalOpened] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [startDate, setStartDate] = useState<string>("")
   const [endDate, setEndDate] = useState<string>("")
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceItem | null>(null)
+
+  // Comments States
+  const [modalTab, setModalTab] = useState<string>("details")
+  const [newCommentText, setNewCommentText] = useState("")
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false)
+
+  const handleAddComment = async () => {
+    if (!newCommentText.trim() || !selectedEvidence) return
+    setIsSubmittingComment(true)
+    const updated = await addCommentApi(selectedEvidence.id, newCommentText)
+    if (updated) {
+      setNewCommentText("")
+      setSelectedEvidence(updated)
+      if (onUpdateEvidence) {
+        onUpdateEvidence(updated)
+      }
+    }
+    setIsSubmittingComment(false)
+  }
+
+  const handleRecallComment = async (commentId: string) => {
+    if (!selectedEvidence) return
+    const updated = await deleteCommentApi(selectedEvidence.id, commentId)
+    if (updated) {
+      setSelectedEvidence(updated)
+      if (onUpdateEvidence) {
+        onUpdateEvidence(updated)
+      }
+    }
+  }
 
   const handleDownload = (url: string, filename: string) => {
     if (!url || url === "#") {
@@ -210,8 +247,6 @@ export default function TeacherDashboard({
   const [evidenceLinks, setEvidenceLinks] = useState<string[]>([])
   const [currentLink, setCurrentLink] = useState("")
   const [existingAttachments, setExistingAttachments] = useState<AttachmentItem[]>([])
-  const [uploadType, setUploadType] = useState<"file" | "link">("file")
-  const [evidenceLink, setEvidenceLink] = useState("")
   const [fileError, setFileError] = useState<string | null>(null)
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null)
   const [notificationTimeoutId, setNotificationTimeoutId] = useState<ReturnType<typeof setTimeout> | null>(null)
@@ -460,9 +495,9 @@ export default function TeacherDashboard({
     setEditingEvidence(null)
     setTitle("")
     setDescription("")
-    setSelectedFiles(null)
-    setUploadType("file")
-    setEvidenceLink("")
+    setSelectedFiles([])
+    setEvidenceLinks([])
+    setCurrentLink("")
     setFileError(null)
 
     let currentFields = fields
@@ -497,9 +532,9 @@ export default function TeacherDashboard({
     setEditingEvidence(null)
     setTitle("")
     setDescription("")
-    setSelectedFiles(null)
-    setUploadType("file")
-    setEvidenceLink("")
+    setSelectedFiles([])
+    setEvidenceLinks([])
+    setCurrentLink("")
     setFileError(null)
 
     const latestFields = await getFieldsAndCriteria()
@@ -764,8 +799,6 @@ export default function TeacherDashboard({
     setEvidenceLinks([])
     setCurrentLink("")
     setExistingAttachments([])
-    setUploadType("file")
-    setEvidenceLink("")
     setFileError(null)
     setEditingEvidence(null)
     setModalOpened(false)
@@ -793,7 +826,7 @@ export default function TeacherDashboard({
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans pb-12">
-      <AppHeader currentUser={currentUser} onLogout={onLogout} onUserUpdate={onUserUpdate} />
+      {!hideHeader && <AppHeader currentUser={currentUser} onLogout={onLogout} onUserUpdate={onUserUpdate} />}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Bottom-Right Notification Toast with Slide and Blur animation */}
@@ -978,13 +1011,13 @@ export default function TeacherDashboard({
         </div>
 
         {/* Navigation Tabs for Views */}
-        <Tabs defaultValue="evidences" variant="outline" radius="md">
+        <Tabs defaultValue="matrix" variant="outline" radius="md">
           <Tabs.List className="bg-white p-1 rounded-xl border border-slate-200 shadow-sm mb-4">
-            <Tabs.Tab value="evidences" leftSection={<IconListDetails size={16} />} className="font-bold">
-              Danh Sách Minh Chứng
-            </Tabs.Tab>
             <Tabs.Tab value="matrix" leftSection={<IconTable size={16} />} className="font-bold text-blue-900">
               8 Tiêu Chuẩn & 35 Tiêu Chí (Khung Đánh Giá)
+            </Tabs.Tab>
+            <Tabs.Tab value="evidences" leftSection={<IconListDetails size={16} />} className="font-bold">
+              Danh Sách Minh Chứng
             </Tabs.Tab>
             <Tabs.Tab value="contacts" leftSection={<IconUsers size={16} />} className="font-bold text-teal-900">
               Danh Bạ Người Dùng
@@ -1159,6 +1192,8 @@ export default function TeacherDashboard({
                                   size="sm"
                                   onClick={() => {
                                     setSelectedEvidence(item)
+                                    setModalTab("details")
+                                    setNewCommentText("")
                                   }}
                                 >
                                   <IconEye size={16} />
@@ -1232,6 +1267,8 @@ export default function TeacherDashboard({
               evidences={teacherEvidences}
               onViewEvidence={(item) => {
                 setSelectedEvidence(item)
+                setModalTab("details")
+                setNewCommentText("")
               }}
               onAddForCriterion={(std, crit) => handleOpenAddModalForCriterion(std, crit)}
               onEditEvidence={(item) => handleEditEvidence(item)}
@@ -1660,163 +1697,304 @@ export default function TeacherDashboard({
           size="lg"
           centered
         >
-          <div className="space-y-4">
-            <div>
-              <Text size="xs" c="dimmed">Tên minh chứng:</Text>
-              <Text fw={700} size="sm" className="text-slate-900">{selectedEvidence.title}</Text>
-            </div>
+          <Tabs value={modalTab} onChange={(val) => setModalTab(val || "details")} className="flex flex-col min-h-[450px]">
+            <Tabs.List className="mb-3">
+              <Tabs.Tab value="details" leftSection={<IconFileText size={14} />}>
+                Thông Tin Minh Chứng
+              </Tabs.Tab>
+              <Tabs.Tab 
+                value="chat" 
+                leftSection={<IconMessage size={14} />}
+                rightSection={
+                  selectedEvidence.comments && selectedEvidence.comments.length > 0 ? (
+                    <Badge size="xs" variant="filled" color="red" circle>
+                      {selectedEvidence.comments.length}
+                    </Badge>
+                  ) : null
+                }
+              >
+                Trao Đổi
+              </Tabs.Tab>
+            </Tabs.List>
 
-            {selectedEvidence.description && (
+            <Tabs.Panel value="details" className="space-y-4">
               <div>
-                <Text size="xs" c="dimmed">Mô tả chi tiết:</Text>
-                <Text size="sm" className="text-slate-700 whitespace-pre-line bg-slate-50 p-2.5 rounded-md border border-slate-100">{selectedEvidence.description}</Text>
+                <Text size="xs" c="dimmed">Tên minh chứng:</Text>
+                <Text fw={700} size="sm" className="text-slate-900">{selectedEvidence.title}</Text>
               </div>
-            )}
 
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <Text size="xs" c="dimmed">Ngày nộp:</Text>
-                <Text fw={600}>{selectedEvidence.date}</Text>
-              </div>
-              <div>
-                <Text size="xs" c="dimmed">Trạng thái:</Text>
-                <div>{getStatusBadge(selectedEvidence.currentStatus)}</div>
-              </div>
-            </div>
+              {selectedEvidence.description && (
+                <div>
+                  <Text size="xs" c="dimmed">Mô tả chi tiết:</Text>
+                  <Text size="sm" className="text-slate-700 whitespace-pre-line bg-slate-50 p-2.5 rounded-md border border-slate-100">{selectedEvidence.description}</Text>
+                </div>
+              )}
 
-            {(selectedEvidence.currentStatus === "Approved" || selectedEvidence.currentStatus === "NeedsSupplement") && selectedEvidence.updatedAt && (
-              <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-lg text-xs space-y-1">
-                <Text size="xs" fw={600} className="text-blue-800 flex items-center gap-1">
-                  <IconCalendar size={14} className="text-blue-600" />
-                  Thời gian Tổ trưởng xét trạng thái:
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <Text size="xs" c="dimmed">Ngày nộp:</Text>
+                  <Text fw={600}>{selectedEvidence.date}</Text>
+                </div>
+                <div>
+                  <Text size="xs" c="dimmed">Trạng thái:</Text>
+                  <div>{getStatusBadge(selectedEvidence.currentStatus)}</div>
+                </div>
+              </div>
+
+              {(selectedEvidence.currentStatus === "Approved" || selectedEvidence.currentStatus === "NeedsSupplement") && selectedEvidence.updatedAt && (
+                <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-lg text-xs space-y-1">
+                  <Text size="xs" fw={600} className="text-blue-800 flex items-center gap-1">
+                    <IconCalendar size={14} className="text-blue-600" />
+                    Thời gian Tổ trưởng xét trạng thái:
+                  </Text>
+                  <Text fw={700} className="text-slate-800">
+                    {new Date(selectedEvidence.updatedAt).toLocaleString("vi-VN", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit"
+                    })}
+                  </Text>
+                </div>
+              )}
+
+              <div>
+                <Text size="xs" c="dimmed">Tiêu chuẩn & Tiêu chí:</Text>
+                <Text size="xs" fw={600} className="text-slate-800">{selectedEvidence.standardName}</Text>
+                <Text size="xs" className="text-slate-600">{selectedEvidence.criteriaName}</Text>
+              </div>
+
+              {/* DANH SÁCH MINH CHỨNG / TÀI LIỆU ĐÍNH KÈM (HỖN HỢP) */}
+              <div className="space-y-3">
+                <Text fw={700} size="xs" className="text-blue-950">
+                  Danh sách tài liệu / minh chứng đính kèm ({selectedEvidence.attachments?.length || (selectedEvidence.urlFile ? 1 : 0)}):
                 </Text>
-                <Text fw={700} className="text-slate-800">
-                  {new Date(selectedEvidence.updatedAt).toLocaleString("vi-VN", {
-                    day: "2-digit",
-                    month: "2-digit",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit"
-                  })}
-                </Text>
-              </div>
-            )}
+                
+                <div className="space-y-2">
+                  {(() => {
+                    const items = selectedEvidence.attachments && selectedEvidence.attachments.length > 0
+                      ? selectedEvidence.attachments
+                      : (selectedEvidence.urlFile && selectedEvidence.urlFile !== "#" ? [{
+                          name: selectedEvidence.originalFileName || "Minh chứng",
+                          url: selectedEvidence.urlFile,
+                          format: selectedEvidence.fileFormat || "unknown",
+                          size: selectedEvidence.fileSize || 0
+                        }] : []);
 
-            <div>
-              <Text size="xs" c="dimmed">Tiêu chuẩn & Tiêu chí:</Text>
-              <Text size="xs" fw={600} className="text-slate-800">{selectedEvidence.standardName}</Text>
-              <Text size="xs" className="text-slate-600">{selectedEvidence.criteriaName}</Text>
-            </div>
+                    if (items.length === 0) {
+                      return <Text size="xs" c="dimmed">Không có tệp tin hoặc liên kết đính kèm.</Text>;
+                    }
 
-            {/* DANH SÁCH MINH CHỨNG / TÀI LIỆU ĐÍNH KÈM (HỖN HỢP) */}
-            <div className="space-y-3">
-              <Text fw={700} size="xs" className="text-blue-950">
-                Danh sách tài liệu / minh chứng đính kèm ({selectedEvidence.attachments?.length || (selectedEvidence.urlFile ? 1 : 0)}):
-              </Text>
-              
-              <div className="space-y-2">
-                {(() => {
-                  const items = selectedEvidence.attachments && selectedEvidence.attachments.length > 0
-                    ? selectedEvidence.attachments
-                    : (selectedEvidence.urlFile && selectedEvidence.urlFile !== "#" ? [{
-                        name: selectedEvidence.originalFileName || "Minh chứng",
-                        url: selectedEvidence.urlFile,
-                        format: selectedEvidence.fileFormat || "unknown",
-                        size: selectedEvidence.fileSize || 0
-                      }] : []);
-
-                  if (items.length === 0) {
-                    return <Text size="xs" c="dimmed">Không có tệp tin hoặc liên kết đính kèm.</Text>;
-                  }
-
-                  return items.map((att, idx) => {
-                    const isUrl = att.format?.toLowerCase() === "url" || att.format?.toLowerCase() === "link";
-                    const sizeText = att.size ? `(${(att.size / (1024 * 1024)).toFixed(2)}MB)` : "";
-                    
-                    return (
-                      <div key={idx} className="flex justify-between items-center gap-3 p-3 border border-blue-100 rounded-lg bg-blue-50/5 hover:bg-blue-50/20 transition-all">
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          {isUrl ? (
-                            <IconLink size={16} className="text-blue-600 shrink-0" />
-                          ) : (
-                            <IconFileText size={16} className="text-teal-600 shrink-0" />
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <Text size="xs" fw={600} className="text-slate-800 truncate" title={att.name}>
-                              {att.name}
-                            </Text>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              <Badge size="xs" variant="outline" color={isUrl ? "blue" : "teal"}>
-                                {att.format ? att.format.toUpperCase() : "FILE"}
-                              </Badge>
-                              {!isUrl && att.size > 0 && (
-                                <Text size="10px" c="dimmed">
-                                  {sizeText}
-                                </Text>
-                              )}
+                    return items.map((att, idx) => {
+                      const isUrl = att.format?.toLowerCase() === "url" || att.format?.toLowerCase() === "link";
+                      const sizeText = att.size ? `(${(att.size / (1024 * 1024)).toFixed(2)}MB)` : "";
+                      
+                      return (
+                        <div key={idx} className="flex justify-between items-center gap-3 p-3 border border-blue-100 rounded-lg bg-blue-50/5 hover:bg-blue-50/20 transition-all">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            {isUrl ? (
+                              <IconLink size={16} className="text-blue-600 shrink-0" />
+                            ) : (
+                              <IconFileText size={16} className="text-teal-600 shrink-0" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <Text size="xs" fw={600} className="text-slate-800 truncate" title={att.name}>
+                                {att.name}
+                              </Text>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <Badge size="xs" variant="outline" color={isUrl ? "blue" : "teal"}>
+                                  {att.format ? att.format.toUpperCase() : "FILE"}
+                                </Badge>
+                                {!isUrl && att.size > 0 && (
+                                  <Text size="10px" c="dimmed">
+                                    {sizeText}
+                                  </Text>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <div className="flex gap-1 shrink-0">
-                          {isUrl ? (
-                            <Button
-                              component="a"
-                              href={att.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              size="xs"
-                              color="blue"
-                              variant="light"
-                              leftSection={<IconExternalLink size={12} />}
-                            >
-                              Mở link
-                            </Button>
-                          ) : (
-                            <>
+                          <div className="flex gap-1 shrink-0">
+                            {isUrl ? (
                               <Button
-                                size="xs"
-                                color="teal"
-                                variant="light"
-                                leftSection={<IconDownload size={12} />}
-                                onClick={() => handleDownload(att.url, att.name)}
-                              >
-                                Tải về
-                              </Button>
-                              <Button
+                                component="a"
+                                href={att.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 size="xs"
                                 color="blue"
                                 variant="light"
-                                leftSection={<IconEye size={12} />}
-                                onClick={() => window.open(att.url, "_blank")}
+                                leftSection={<IconExternalLink size={12} />}
                               >
-                                Xem
+                                Mở link
                               </Button>
-                            </>
-                          )}
+                            ) : (
+                              <>
+                                <Button
+                                  size="xs"
+                                  color="teal"
+                                  variant="light"
+                                  leftSection={<IconDownload size={12} />}
+                                  onClick={() => handleDownload(att.url, att.name)}
+                                >
+                                  Tải về
+                                </Button>
+                                <Button
+                                  size="xs"
+                                  color="blue"
+                                  variant="light"
+                                  leftSection={<IconEye size={12} />}
+                                  onClick={() => window.open(att.url, "_blank")}
+                                >
+                                  Xem
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  });
-                })()}
+                      );
+                    });
+                  })()}
+                </div>
               </div>
-            </div>
 
-            {selectedEvidence.reviewComment && (
-              <Alert color="blue" title="Nhận xét từ Tổ trưởng / BGH">
-                <Text size="xs">{selectedEvidence.reviewComment}</Text>
-              </Alert>
-            )}
+              {selectedEvidence.reviewComment && (
+                <Alert color="blue" title="Nhận xét từ Tổ trưởng / BGH">
+                  <Text size="xs">{selectedEvidence.reviewComment}</Text>
+                </Alert>
+              )}
 
-            <div className="pt-2 flex justify-end">
-              <Button size="sm" onClick={() => {
-                setSelectedEvidence(null)
-              }}>
-                Đóng
-              </Button>
-            </div>
-          </div>
+              <div className="pt-2 flex justify-end">
+                <Button size="sm" onClick={() => {
+                  setSelectedEvidence(null)
+                }}>
+                  Đóng
+                </Button>
+              </div>
+            </Tabs.Panel>
+
+            <Tabs.Panel value="chat" className="flex flex-col justify-between flex-1 overflow-hidden">
+              {/* GitHub style Timeline comments */}
+              <div className="flex-1 overflow-y-auto pr-1 space-y-4 py-2 min-h-[300px] max-h-[400px]">
+                {(!selectedEvidence.comments || selectedEvidence.comments.length === 0) ? (
+                  <div className="text-center py-8 text-slate-400">
+                    <IconMessage size={36} className="mx-auto stroke-[1.2] mb-2 text-slate-300 animate-pulse" />
+                    <Text size="xs">Chưa có trao đổi nào cho minh chứng này.</Text>
+                    <Text size="10px" c="dimmed" className="mt-1">Tổ trưởng có thể đặt câu hỏi hoặc yêu cầu chỉnh sửa, giáo viên có thể trả lời tại đây.</Text>
+                  </div>
+                ) : (
+                  <div className="relative pl-4 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                    {selectedEvidence.comments.map((cmt, idx) => {
+                      const isMe = cmt.userId === currentUser.userId;
+                      const isDeptHead = cmt.userRole === "DepartmentHead";
+                      const isSchoolBoard = cmt.userRole === "SchoolBoard";
+                      
+                      let roleName = "Giáo viên";
+                      let roleColor = "blue";
+                      if (isDeptHead) {
+                        roleName = "Tổ trưởng";
+                        roleColor = "violet";
+                      } else if (isSchoolBoard) {
+                        roleName = "Ban giám hiệu";
+                        roleColor = "red";
+                      }
+
+                      const commentTime = new Date(cmt.createdAt).getTime();
+                      const canRecall = isMe && (nowTime - commentTime < 60 * 60 * 1000);
+
+                      return (
+                        <div key={idx} className="relative">
+                          {/* Bullet point on timeline */}
+                          <div className={`absolute -left-[19px] top-1.5 w-2.5 h-2.5 rounded-full border-2 ${
+                            isMe ? "bg-blue-600 border-blue-200" : "bg-slate-400 border-white"
+                          }`} />
+                          
+                          <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+                            {/* Comment Header - Like GitHub */}
+                            <div className="bg-slate-50 px-3 py-2 border-b border-slate-200 flex justify-between items-center text-xs">
+                              <div className="flex items-center gap-1.5">
+                                <Avatar size="xs" radius="xl" color={isMe ? "blue" : "gray"}>
+                                  {cmt.userName.slice(0, 1).toUpperCase()}
+                                </Avatar>
+                                <Text fw={700} size="xs" className="text-slate-800">{cmt.userName}</Text>
+                                <Badge size="xs" variant="light" color={roleColor}>
+                                  {roleName}
+                                </Badge>
+                                {isMe && <Badge size="xs" variant="outline" color="gray">Bạn</Badge>}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Text size="10px" c="dimmed">
+                                  {new Date(cmt.createdAt).toLocaleString("vi-VN", {
+                                    day: "2-digit",
+                                    month: "2-digit",
+                                    hour: "2-digit",
+                                    minute: "2-digit"
+                                  })}
+                                </Text>
+                                {canRecall && cmt.id && (
+                                  <Button
+                                    size="compact-xs"
+                                    variant="subtle"
+                                    color="red"
+                                    className="h-5 px-1.5 min-w-0"
+                                    onClick={() => handleRecallComment(cmt.id!)}
+                                    title="Thu hồi phản hồi này"
+                                  >
+                                    Thu hồi
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                            {/* Comment Body */}
+                            <div className="p-3 text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
+                              {cmt.content}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Reply Input block */}
+              <div className="pt-2 border-t border-slate-100 shrink-0 space-y-2 bg-white">
+                <Textarea
+                  placeholder="Nhập câu hỏi, giải trình hoặc phản hồi... (Ấn Enter để gửi)"
+                  rows={2}
+                  value={newCommentText}
+                  onChange={(e) => setNewCommentText(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      if (e.nativeEvent.isComposing) {
+                        return
+                      }
+                      e.preventDefault()
+                      handleAddComment()
+                    }
+                  }}
+                  disabled={isSubmittingComment}
+                  styles={{
+                    input: { fontSize: "12px" }
+                  }}
+                />
+                <div className="flex justify-end gap-2">
+                  <Button
+                    size="xs"
+                    color="blue"
+                    leftSection={<IconSend size={12} />}
+                    loading={isSubmittingComment}
+                    disabled={!newCommentText.trim()}
+                    onClick={handleAddComment}
+                  >
+                    Gửi Phản Hồi
+                  </Button>
+                </div>
+              </div>
+            </Tabs.Panel>
+          </Tabs>
         </Modal>
       )}
 

@@ -106,6 +106,17 @@ const formatEvidenceItem = (e: any, fallbackUser?: any) => {
         size: e.fileSize || 0
       }] : []);
 
+  const comments = (e.comments && e.comments.length > 0)
+    ? e.comments.map((comment: any) => ({
+        id: comment._id ? comment._id.toString() : (comment.id || undefined),
+        userId: comment.userId,
+        userName: comment.userName,
+        userRole: comment.userRole,
+        content: comment.content,
+        createdAt: comment.createdAt ? new Date(comment.createdAt).toISOString() : new Date().toISOString()
+      }))
+    : [];
+
   return {
     id: e._id ? e._id.toString() : e.id,
     evidenceId: e.evidenceId,
@@ -124,10 +135,12 @@ const formatEvidenceItem = (e: any, fallbackUser?: any) => {
       fullName: e.submittedBy?.fullName || fallbackUser?.fullName || "Giáo viên",
       email: e.submittedBy?.email || fallbackUser?.email || "",
       departmentName: e.submittedBy?.departmentName || fallbackUser?.departmentName || "Tổng hợp",
+      role: e.submittedBy?.role || fallbackUser?.role || "Teacher",
     },
     reviewComment: e.reviewComment || "",
     updatedAt: e.updatedAt ? new Date(e.updatedAt).toISOString() : new Date().toISOString(),
     attachments,
+    comments,
   };
 };
 
@@ -816,7 +829,7 @@ router.post("/", authenticateToken, upload.array("files", 10), async (req: AuthR
  * PATCH /api/evidences/:id/status
  * Cập nhật trạng thái duyệt (Tổ trưởng / BGH)
  */
-router.patch("/:id/status", authenticateToken, authorizeRoles(UserRole.DEPARTMENT_HEAD, UserRole.SCHOOL_BOARD), async (req: AuthRequest, res: Response) => {
+router.patch("/:id/status", authenticateToken, authorizeRoles(UserRole.DEPARTMENT_HEAD, UserRole.DEPARTMENT_VICE_HEAD, UserRole.PRINCIPAL, UserRole.VICE_PRINCIPAL, UserRole.SCHOOL_BOARD), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { status, reviewComment } = req.body;
@@ -1150,6 +1163,212 @@ router.put("/:id", authenticateToken, upload.array("files", 10), async (req: Aut
     }
 
     return res.status(404).json({ success: false, message: "Không tìm thấy minh chứng để cập nhật!" });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /api/evidences/:id/comments
+ * Thêm một nhận xét / phản hồi mới vào minh chứng
+ */
+router.post("/:id/comments", authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { content } = req.body;
+    const user = req.user;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ success: false, message: "Nội dung nhận xét không được để trống!" });
+    }
+
+    const dbUser = await User.findOne({
+      $or: [
+        { userId: user?.userId },
+        { email: user?.email }
+      ]
+    });
+
+    const commenterName = dbUser?.fullName || user?.fullName || "Người dùng";
+    const commenterRole = dbUser?.role || user?.role || "Teacher";
+    const commenterId = dbUser?.userId || user?.userId || "USR-UNKNOWN";
+
+    const newComment = {
+      userId: commenterId,
+      userName: commenterName,
+      userRole: commenterRole,
+      content: content.trim(),
+      createdAt: new Date(),
+    };
+
+    let dbEvidence = null;
+    try {
+      if (typeof id === "string" && Types.ObjectId.isValid(id)) {
+        dbEvidence = await Evidence.findById(id).populate("submittedBy");
+      }
+      if (!dbEvidence) {
+        dbEvidence = await Evidence.findOne({ evidenceId: id }).populate("submittedBy");
+      }
+    } catch {
+      dbEvidence = null;
+    }
+
+    if (dbEvidence) {
+      if (!dbEvidence.comments) {
+        dbEvidence.comments = [];
+      }
+      dbEvidence.comments.push(newComment);
+      await dbEvidence.save();
+
+      const formatted = formatEvidenceItem(dbEvidence);
+      return res.status(200).json({
+        success: true,
+        message: "Gửi phản hồi thành công!",
+        evidence: formatted,
+      });
+    }
+
+    // fallback in-memory database
+    const itemIndex = inMemoryEvidences.findIndex((e) => e.id === id || e.evidenceId === id);
+    if (itemIndex !== -1) {
+      const memoryEv = inMemoryEvidences[itemIndex];
+      if (!memoryEv.comments) {
+        memoryEv.comments = [];
+      }
+      
+      const newMemoryComment = {
+        id: "cmt-" + Date.now(),
+        userId: commenterId,
+        userName: commenterName,
+        userRole: commenterRole,
+        content: content.trim(),
+        createdAt: new Date().toISOString()
+      };
+      memoryEv.comments.push(newMemoryComment);
+
+      return res.status(200).json({
+        success: true,
+        message: "Gửi phản hồi thành công!",
+        evidence: memoryEv,
+      });
+    }
+
+    return res.status(404).json({ success: false, message: "Không tìm thấy minh chứng để nhận xét!" });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * DELETE /api/evidences/:id/comments/:commentId
+ * Thu hồi một nhận xét / phản hồi (chỉ trong vòng 1 giờ và phải là chính chủ)
+ */
+router.delete("/:id/comments/:commentId", authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id, commentId } = req.params;
+    const user = req.user;
+
+    const dbUser = await User.findOne({
+      $or: [
+        { userId: user?.userId },
+        { email: user?.email }
+      ]
+    });
+    const commenterId = dbUser?.userId || user?.userId || "USR-UNKNOWN";
+
+    let dbEvidence = null;
+    try {
+      if (typeof id === "string" && Types.ObjectId.isValid(id)) {
+        dbEvidence = await Evidence.findById(id).populate("submittedBy");
+      }
+      if (!dbEvidence) {
+        dbEvidence = await Evidence.findOne({ evidenceId: id }).populate("submittedBy");
+      }
+    } catch {
+      dbEvidence = null;
+    }
+
+    if (dbEvidence) {
+      if (!dbEvidence.comments || dbEvidence.comments.length === 0) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy phản hồi để thu hồi!" });
+      }
+
+      const commentIndex = dbEvidence.comments.findIndex((c: any) => {
+        const cid = c._id ? c._id.toString() : (c.id || undefined);
+        return cid === commentId;
+      });
+
+      if (commentIndex === -1) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy phản hồi để thu hồi!" });
+      }
+
+      const targetComment = dbEvidence.comments[commentIndex];
+
+      if (targetComment.userId !== commenterId) {
+        return res.status(403).json({ success: false, message: "Bạn không thể thu hồi nhận xét của người khác!" });
+      }
+
+      const commentTime = new Date(targetComment.createdAt).getTime();
+      const currentTime = Date.now();
+      const diffInMs = currentTime - commentTime;
+      const oneHourInMs = 60 * 60 * 1000;
+
+      if (diffInMs > oneHourInMs) {
+        return res.status(400).json({ success: false, message: "Đã quá 1 giờ kể từ khi gửi, không thể thu hồi phản hồi này!" });
+      }
+
+      dbEvidence.comments.splice(commentIndex, 1);
+      await dbEvidence.save();
+
+      const formatted = formatEvidenceItem(dbEvidence);
+      return res.status(200).json({
+        success: true,
+        message: "Thu hồi phản hồi thành công!",
+        evidence: formatted,
+      });
+    }
+
+    const itemIndex = inMemoryEvidences.findIndex((e) => e.id === id || e.evidenceId === id);
+    if (itemIndex !== -1) {
+      const memoryEv = inMemoryEvidences[itemIndex];
+      if (!memoryEv.comments || memoryEv.comments.length === 0) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy phản hồi để thu hồi!" });
+      }
+
+      const commentIndex = memoryEv.comments.findIndex((c: any) => {
+        const cid = c._id ? c._id.toString() : (c.id || undefined);
+        return cid === commentId;
+      });
+
+      if (commentIndex === -1) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy phản hồi để thu hồi!" });
+      }
+
+      const targetComment = memoryEv.comments[commentIndex];
+
+      if (targetComment.userId !== commenterId) {
+        return res.status(403).json({ success: false, message: "Bạn không thể thu hồi nhận xét của người khác!" });
+      }
+
+      const commentTime = new Date(targetComment.createdAt).getTime();
+      const currentTime = Date.now();
+      const diffInMs = currentTime - commentTime;
+      const oneHourInMs = 60 * 60 * 1000;
+
+      if (diffInMs > oneHourInMs) {
+        return res.status(400).json({ success: false, message: "Đã quá 1 giờ kể từ khi gửi, không thể thu hồi phản hồi này!" });
+      }
+
+      memoryEv.comments.splice(commentIndex, 1);
+
+      return res.status(200).json({
+        success: true,
+        message: "Thu hồi phản hồi thành công!",
+        evidence: memoryEv,
+      });
+    }
+
+    return res.status(404).json({ success: false, message: "Không tìm thấy minh chứng để thu hồi nhận xét!" });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }

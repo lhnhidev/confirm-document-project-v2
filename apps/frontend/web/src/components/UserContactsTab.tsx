@@ -22,12 +22,18 @@ import type { User, UserRole } from "../types/auth"
 const ROLE_LABELS: Record<UserRole, string> = {
   Teacher: "Giáo viên",
   DepartmentHead: "Tổ trưởng chuyên môn",
+  DepartmentViceHead: "Tổ phó chuyên môn",
+  Principal: "Hiệu trưởng",
+  VicePrincipal: "Hiệu phó",
   SchoolBoard: "Ban giám hiệu"
 }
 
 const ROLE_COLORS: Record<UserRole, string> = {
   Teacher: "blue",
   DepartmentHead: "amber",
+  DepartmentViceHead: "orange",
+  Principal: "red",
+  VicePrincipal: "indigo",
   SchoolBoard: "emerald"
 }
 

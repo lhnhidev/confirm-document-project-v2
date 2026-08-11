@@ -86,6 +86,12 @@ export default function UserProfileModal({
       return { label: "Giáo viên THPT", color: "blue" }
     case UserRoleValues.DEPARTMENT_HEAD:
       return { label: "Tổ trưởng Chuyên môn", color: "emerald" }
+    case UserRoleValues.DEPARTMENT_VICE_HEAD:
+      return { label: "Tổ phó Chuyên môn", color: "orange" }
+    case UserRoleValues.PRINCIPAL:
+      return { label: "Hiệu trưởng", color: "red" }
+    case UserRoleValues.VICE_PRINCIPAL:
+      return { label: "Hiệu phó", color: "indigo" }
     case UserRoleValues.SCHOOL_BOARD:
       return { label: "Ban Giám Hiệu", color: "amber" }
     default:
@@ -460,6 +466,8 @@ export default function UserProfileModal({
                   onChange={(e) => setMajor(e.target.value)}
                   placeholder="Ví dụ: Tin học, Giáo dục Quốc phòng, Toán..."
                   required
+                  disabled={currentUser.role === UserRoleValues.TEACHER}
+                  description={currentUser.role === UserRoleValues.TEACHER ? "Chỉ Tổ trưởng hoặc BGH mới có quyền thay đổi bộ môn giảng dạy" : undefined}
                 />
 
                 <TextInput
@@ -467,6 +475,8 @@ export default function UserProfileModal({
                   value={departmentName}
                   onChange={(e) => setDepartmentName(e.target.value)}
                   placeholder="Ví dụ: Tổ Xã Hội, Tổ Tự Nhiên, Tổng hợp..."
+                  disabled={currentUser.role === UserRoleValues.TEACHER}
+                  description={currentUser.role === UserRoleValues.TEACHER ? "Chỉ Tổ trưởng hoặc BGH mới có quyền thay đổi tổ chuyên môn" : undefined}
                 />
 
                 <TextInput

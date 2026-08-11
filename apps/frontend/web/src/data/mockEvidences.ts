@@ -17,7 +17,8 @@ export const INITIAL_EVIDENCES: EvidenceItem[] = [
       userId: "USR-001",
       fullName: "Lê Thị Ngọc Hơn",
       email: "lethingochon.dtnt@gmail.com",
-      departmentName: "Tổng hợp"
+      departmentName: "Tổng hợp",
+      role: "DepartmentHead"
     },
     standardName: "Tiêu chuẩn 2: Phát triển chuyên môn, nghiệp vụ",
     criteriaName: "Tiêu chí 7: Nổi bật trong đổi mới sáng tạo"

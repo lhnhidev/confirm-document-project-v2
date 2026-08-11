@@ -14,6 +14,14 @@ export interface IAttachment {
   size: number;
 }
 
+export interface IComment {
+  userId: string;
+  userName: string;
+  userRole: string;
+  content: string;
+  createdAt: Date;
+}
+
 export interface IEvidence extends Document {
   evidenceId: string;
   title: string;
@@ -26,6 +34,7 @@ export interface IEvidence extends Document {
   currentStatus: EvidenceStatus;
   reviewComment?: string;
   attachments?: IAttachment[];
+  comments?: IComment[];
 
   // Relations
   submittedBy: Types.ObjectId; // FK -> User
@@ -60,6 +69,18 @@ const evidenceSchema = new Schema<IEvidence>(
           url: { type: String, required: true },
           format: { type: String, required: true },
           size: { type: Number, required: true, default: 0 },
+        },
+      ],
+      default: [],
+    },
+    comments: {
+      type: [
+        {
+          userId: { type: String, required: true },
+          userName: { type: String, required: true },
+          userRole: { type: String, required: true },
+          content: { type: String, required: true },
+          createdAt: { type: Date, default: Date.now },
         },
       ],
       default: [],

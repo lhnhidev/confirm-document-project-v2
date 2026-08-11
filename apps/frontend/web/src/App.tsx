@@ -111,6 +111,16 @@ const App = () => {
     )
   }
 
+  const handleUpdateEvidence = (updatedItem: EvidenceItem) => {
+    setEvidences((prev) =>
+      prev.map((item) =>
+        item.id === updatedItem.id || item.evidenceId === updatedItem.id
+          ? updatedItem
+          : item
+      )
+    )
+  }
+
   if (!currentUser) {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />
   }
@@ -128,10 +138,12 @@ const App = () => {
         onAddEvidence={handleAddEvidence}
         onLogout={handleLogout}
         onUserUpdate={handleUserUpdate}
+        onUpdateEvidence={handleUpdateEvidence}
       />
     )
 
   case UserRole.DEPARTMENT_HEAD:
+  case UserRole.DEPARTMENT_VICE_HEAD:
     return (
       <DepartmentHeadDashboard
         currentUser={currentUser}
@@ -139,16 +151,22 @@ const App = () => {
         onUpdateStatus={handleUpdateStatus}
         onLogout={handleLogout}
         onUserUpdate={handleUserUpdate}
+        onUpdateEvidence={handleUpdateEvidence}
+        onAddEvidence={handleAddEvidence}
       />
     )
 
+  case UserRole.PRINCIPAL:
+  case UserRole.VICE_PRINCIPAL:
   case UserRole.SCHOOL_BOARD:
     return (
       <SchoolBoardDashboard
         currentUser={currentUser}
         evidences={evidences}
+        onUpdateStatus={handleUpdateStatus}
         onLogout={handleLogout}
         onUserUpdate={handleUserUpdate}
+        onUpdateEvidence={handleUpdateEvidence}
       />
     )
 

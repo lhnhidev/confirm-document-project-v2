@@ -3,6 +3,9 @@ import { Schema, model, Document, Types } from "mongoose";
 export enum UserRole {
   TEACHER = "Teacher",
   DEPARTMENT_HEAD = "DepartmentHead",
+  DEPARTMENT_VICE_HEAD = "DepartmentViceHead",
+  PRINCIPAL = "Principal",
+  VICE_PRINCIPAL = "VicePrincipal",
   SCHOOL_BOARD = "SchoolBoard",
 }
 

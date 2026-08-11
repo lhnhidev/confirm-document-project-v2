@@ -348,26 +348,50 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
 
                   <button
                     type="button"
-                    onClick={() => fillQuickAccount("lethingochon.dtnt@gmail.com")}
+                    onClick={() => fillQuickAccount("phuoc.ipebl@gmail.com")}
                     className="flex items-center justify-between rounded-lg bg-white p-2 border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50 transition-colors text-left"
                   >
                     <div>
-                      <span className="font-bold text-slate-900">Lê Thị Ngọc Hơn</span>
-                      <span className="text-slate-500 block text-[11px]">lethingochon.dtnt@gmail.com</span>
+                      <span className="font-bold text-slate-900">Lê Phú Quốc</span>
+                      <span className="text-slate-500 block text-[11px]">phuoc.ipebl@gmail.com</span>
                     </div>
-                    <Badge color="emerald" size="xs">Tổ trưởng chuyên môn</Badge>
+                    <Badge color="emerald" size="xs">Tổ trưởng</Badge>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => fillQuickAccount("danhsung1991@gmail.com")}
+                    className="flex items-center justify-between rounded-lg bg-white p-2 border border-slate-200 hover:border-orange-400 hover:bg-orange-50/50 transition-colors text-left"
+                  >
+                    <div>
+                      <span className="font-bold text-slate-900">Danh Sung</span>
+                      <span className="text-slate-500 block text-[11px]">danhsung1991@gmail.com</span>
+                    </div>
+                    <Badge color="orange" size="xs">Tổ phó</Badge>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => fillQuickAccount("duquockiet@gmail.com")}
+                    className="flex items-center justify-between rounded-lg bg-white p-2 border border-slate-200 hover:border-red-400 hover:bg-red-50/50 transition-colors text-left"
+                  >
+                    <div>
+                      <span className="font-bold text-slate-900">Dư Quốc Kiệt</span>
+                      <span className="text-slate-500 block text-[11px]">duquockiet@gmail.com</span>
+                    </div>
+                    <Badge color="red" size="xs">Hiệu trưởng</Badge>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => fillQuickAccount("ncnhuu83@gmail.com")}
-                    className="flex items-center justify-between rounded-lg bg-white p-2 border border-slate-200 hover:border-amber-400 hover:bg-amber-50/50 transition-colors text-left"
+                    className="flex items-center justify-between rounded-lg bg-white p-2 border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 transition-colors text-left"
                   >
                     <div>
                       <span className="font-bold text-slate-900">Nguyễn Chơn Nhất Hữu</span>
                       <span className="text-slate-500 block text-[11px]">ncnhuu83@gmail.com</span>
                     </div>
-                    <Badge color="amber" size="xs">Ban Giám Hiệu</Badge>
+                    <Badge color="indigo" size="xs">Hiệu phó</Badge>
                   </button>
                 </div>
               </div>

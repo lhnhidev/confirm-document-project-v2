@@ -1,6 +1,9 @@
 export const UserRole = {
   TEACHER: "Teacher",
   DEPARTMENT_HEAD: "DepartmentHead",
+  DEPARTMENT_VICE_HEAD: "DepartmentViceHead",
+  PRINCIPAL: "Principal",
+  VICE_PRINCIPAL: "VicePrincipal",
   SCHOOL_BOARD: "SchoolBoard"
 } as const
 
@@ -33,6 +36,15 @@ export interface AttachmentItem {
   size: number
 }
 
+export interface CommentItem {
+  id?: string
+  userId: string
+  userName: string
+  userRole: string
+  content: string
+  createdAt: string
+}
+
 export interface EvidenceItem {
   id: string
   evidenceId: string
@@ -49,10 +61,13 @@ export interface EvidenceItem {
     fullName: string
     email: string
     departmentName: string
+    role?: string
   }
   standardName: string
   criteriaName: string
   reviewComment?: string
   updatedAt?: string
   attachments?: AttachmentItem[]
+  comments?: CommentItem[]
+  commentsCount?: number
 }

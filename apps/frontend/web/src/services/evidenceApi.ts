@@ -344,3 +344,57 @@ export async function updateEvidenceApi(
     return false
   }
 }
+
+/**
+ * Backend API Call: Thêm nhận xét / phản hồi cho minh chứng
+ */
+export async function addCommentApi(
+  id: string,
+  content: string
+): Promise<EvidenceItem | null> {
+  const token = getToken()
+  try {
+    const response = await fetch(`/api/evidences/${id}/comments`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ content })
+    })
+    if (!response.ok) {
+      return null
+    }
+    const data = await response.json()
+    return data.success ? data.evidence : null
+  } catch (err) {
+    console.error("❌ Error adding comment in backend API:", err)
+    return null
+  }
+}
+
+/**
+ * Backend API Call: Thu hồi nhận xét / phản hồi cho minh chứng
+ */
+export async function deleteCommentApi(
+  id: string,
+  commentId: string
+): Promise<EvidenceItem | null> {
+  const token = getToken()
+  try {
+    const response = await fetch(`/api/evidences/${id}/comments/${commentId}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+    if (!response.ok) {
+      return null
+    }
+    const data = await response.json()
+    return data.success ? data.evidence : null
+  } catch (err) {
+    console.error("❌ Error deleting comment in backend API:", err)
+    return null
+  }
+}

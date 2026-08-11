@@ -28,6 +28,21 @@ export default function AppHeader({ currentUser, onLogout, onUserUpdate }: AppHe
         label: "Tổ trưởng Chuyên môn",
         color: "emerald"
       }
+    case UserRoleValues.DEPARTMENT_VICE_HEAD:
+      return {
+        label: "Tổ phó Chuyên môn",
+        color: "orange"
+      }
+    case UserRoleValues.PRINCIPAL:
+      return {
+        label: "Hiệu trưởng",
+        color: "red"
+      }
+    case UserRoleValues.VICE_PRINCIPAL:
+      return {
+        label: "Hiệu phó",
+        color: "indigo"
+      }
     case UserRoleValues.SCHOOL_BOARD:
       return {
         label: "Ban Giám Hiệu",
