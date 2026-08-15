@@ -3,6 +3,11 @@ import mongoose from "mongoose";
 export const isDbConnected = () => mongoose.connection.readyState === 1;
 
 export const connect = async () => {
+  // Reuse the existing connection across serverless invocations instead of reconnecting every call
+  if (mongoose.connection.readyState === 1 || mongoose.connection.readyState === 2) {
+    return;
+  }
+
   const MONGO_URI = process.env.MONGO_URI;
 
   if (!MONGO_URI) {

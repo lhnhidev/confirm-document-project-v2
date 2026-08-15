@@ -1,7 +1,7 @@
 import "dotenv/config";
 import mongoose from "mongoose";
-import { Evidence } from "../models/evidence.model";
-import { Field } from "../models/field.model";
+import { Evidence } from "../models/evidence.model.ts";
+import { Field } from "../models/field.model.ts";
 
 async function main() {
   const MONGO_URI = process.env.MONGO_URI;
