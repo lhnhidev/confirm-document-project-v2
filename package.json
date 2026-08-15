@@ -1,6 +1,7 @@
 {
   "name": "confirm-documents-app",
   "private": true,
+  "type": "module",
   "workspaces": [
     "apps/backend",
     "apps/frontend/web"
