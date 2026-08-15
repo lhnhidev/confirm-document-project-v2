@@ -28,9 +28,13 @@ let bootstrapped = false;
 app.use(async (_req: Request, _res: Response, next: NextFunction) => {
   if (!bootstrapped) {
     bootstrapped = true;
-    await connect();
-    await syncSeedUsersToDatabase();
-    await syncFieldsToDatabase();
+    try {
+      await connect();
+      await syncSeedUsersToDatabase();
+      await syncFieldsToDatabase();
+    } catch (err) {
+      console.error("⚠️ Lỗi khi khởi tạo kết nối/seed dữ liệu:", err);
+    }
   }
   next();
 });
@@ -49,4 +53,19 @@ app.get("/api/health", (_req: Request, res: Response) => {
 
 app.get("/", (_req: Request, res: Response) => {
   res.send("Confirm Documents Backend API running smoothly!");
+});
+
+// Any /api/* path that didn't match a route above (avoids Vercel's raw platform 404 page).
+app.use("/api", (_req: Request, res: Response) => {
+  res.status(404).json({ success: false, message: "Không tìm thấy API endpoint này!" });
+});
+
+// Catches synchronous/async errors from any route above so clients always get JSON, not a crashed function.
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  console.error("❌ Lỗi hệ thống chưa được xử lý:", err);
+  res.status(500).json({
+    success: false,
+    message: "Lỗi hệ thống server!",
+    error: err?.message
+  });
 });

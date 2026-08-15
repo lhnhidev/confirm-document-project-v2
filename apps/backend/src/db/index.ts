@@ -1,5 +1,11 @@
 import mongoose from "mongoose";
 
+// Fail queries immediately instead of buffering/hanging when there is no active
+// connection (missing MONGO_URI, blocked Atlas IP access, etc). Without this,
+// a stalled connection makes every query wait until the serverless function's
+// execution timeout kills the request (FUNCTION_INVOCATION_FAILED on Vercel).
+mongoose.set("bufferCommands", false);
+
 export const isDbConnected = () => mongoose.connection.readyState === 1;
 
 export const connect = async () => {
