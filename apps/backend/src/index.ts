@@ -20,6 +20,9 @@ const PORT = process.env.BACKEND_PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// Serve locally-stored evidence files (used when Cloudflare R2 is not configured)
+app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+
 // Connect database and seed initial data if empty
 connect().then(async () => {
   await syncSeedUsersToDatabase();

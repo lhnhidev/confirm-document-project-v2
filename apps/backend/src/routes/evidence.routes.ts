@@ -480,282 +480,6 @@ router.get("/my-supplement-count", authenticateToken, async (req: AuthRequest, r
 });
 
 /**
- * Helper function to seed sample leader evidences if none exist in MongoDB Atlas
- */
-async function ensureLeaderEvidencesInDb() {
-  try {
-    const leaderUsers = await User.find({
-      role: { $in: [UserRole.DEPARTMENT_HEAD, UserRole.DEPARTMENT_VICE_HEAD] }
-    });
-
-    if (!leaderUsers || leaderUsers.length === 0) return;
-
-    // Check if any leader already has evidence
-    const existingLeaderEvidences = await Evidence.find({
-      submittedBy: { $in: leaderUsers.map(u => u._id) }
-    });
-
-    if (existingLeaderEvidences && existingLeaderEvidences.length >= 8) {
-      return; // Already has enough leader evidences
-    }
-
-    const leaderEvidenceTemplates = [
-      {
-        userEmail: "phuoc.ipebl@gmail.com", // USR-002: Lê Phú Quốc - Tổ trưởng Tổ Tổng Hợp
-        evidenceId: "MC-2026-USR-002-001",
-        title: "Kế hoạch ứng dụng CNTT và Chuyển đổi số Tổ Tổng Hợp năm học 2025-2026",
-        description: "Xây dựng định hướng số hóa kho tài nguyên giảng dạy, triển khai sổ điểm điện tử và LMS cho toàn bộ giáo viên tổ Tổng Hợp.",
-        fieldCode: "I",
-        critId: "TC101",
-        status: EvidenceStatus.PENDING,
-        fileName: "KeHoach_ChuyenDoiSo_ToTongHop_2025_2026.pdf",
-        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-002/Field_I/KeHoach_ChuyenDoiSo_ToTongHop.pdf",
-        comments: [
-          {
-            userId: "USR-002",
-            userName: "Lê Phú Quốc",
-            userRole: "DEPARTMENT_HEAD",
-            content: "Kính gửi Ban Giám Hiệu xem xét và phê duyệt kế hoạch chuyển đổi số của Tổ Tổng Hợp năm học 2025-2026.",
-            createdAt: new Date(Date.now() - 3600000 * 48)
-          }
-        ]
-      },
-      {
-        userEmail: "phuoc.ipebl@gmail.com",
-        evidenceId: "MC-2026-USR-002-002",
-        title: "Ngân hàng học liệu số và giáo án tương tác môn Công nghệ",
-        description: "Tổng hợp 45 bài giảng điện tử tương tác và kho video hướng dẫn thực hành ứng dụng công nghệ số.",
-        fieldCode: "II",
-        critId: "TC205",
-        status: EvidenceStatus.APPROVED,
-        fileName: "NganHangHocLieuSo_CongNghe_2026.pdf",
-        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-002/Field_II/NganHangHocLieuSo_CongNghe.pdf",
-        reviewComment: "Tổ trưởng chuẩn bị học liệu số rất công phu và đầy đủ, đạt chuẩn xuất sắc.",
-        comments: [
-          {
-            userId: "USR-037",
-            userName: "Dư Quốc Kiệt",
-            userRole: "PRINCIPAL",
-            content: "Học liệu số chất lượng cao, khuyến khích nhân rộng mô hình cho các tổ khác.",
-            createdAt: new Date(Date.now() - 3600000 * 24)
-          }
-        ]
-      },
-      {
-        userEmail: "danhsung1991@gmail.com", // USR-004: Danh Sung - Tổ phó Tổ Tổng Hợp
-        evidenceId: "MC-2026-USR-004-001",
-        title: "Video học liệu số kỹ thuật bài tập thể dục và thể thao trường học",
-        description: "Bộ video hướng dẫn động tác kỹ thuật môn Thể dục được quay dựng và đăng tải trên kênh Youtube nội bộ của trường.",
-        fieldCode: "II",
-        critId: "TC203",
-        status: EvidenceStatus.APPROVED,
-        fileName: "VideoBaiGiang_TheDuc_2026.pdf",
-        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-004/Field_II/VideoBaiGiang_TheDuc.pdf",
-        reviewComment: "Đã kiểm duyệt các video kỹ thuật, hình ảnh và âm thanh rõ nét.",
-      },
-      {
-        userEmail: "danhsung1991@gmail.com",
-        evidenceId: "MC-2026-USR-004-002",
-        title: "Hệ thống quản lý và đánh giá thể lực học sinh bằng Google Sheets & AppSheet",
-        description: "Số hóa dữ liệu kiểm tra thể lực định kỳ của 850 học sinh toàn trường, tự động trích xuất báo cáo.",
-        fieldCode: "IV",
-        critId: "TC403",
-        status: EvidenceStatus.PENDING,
-        fileName: "QuanLyTheLucHocSinh_SoHoa.pdf",
-        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-004/Field_IV/QuanLyTheLucHocSinh_SoHoa.pdf",
-      },
-      {
-        userEmail: "thiyennguyen1981@gmail.com", // USR-007: Nguyễn Thị Yến - Tổ phó Tổ Tự Nhiên
-        evidenceId: "MC-2026-USR-007-001",
-        title: "Bộ bài giảng điện tử e-Learning môn Toán THPT trên LMS",
-        description: "Thiết kế hệ thống bài giảng tương tác và bài tập củng cố kiến thức môn Toán 10 và 11.",
-        fieldCode: "III",
-        critId: "TC301",
-        status: EvidenceStatus.APPROVED,
-        fileName: "BaiGiang_eLearning_ToanTHPT.pdf",
-        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-007/Field_III/BaiGiang_eLearning_Toan.pdf",
-        reviewComment: "Bài giảng e-Learning môn Toán thiết kế logic, tương tác tốt.",
-      },
-      {
-        userEmail: "thiyennguyen1981@gmail.com",
-        evidenceId: "MC-2026-USR-007-002",
-        title: "Xây dựng ma trận ma đề và ngân hàng đề thi trắc nghiệm Toán số hóa",
-        description: "Tạo lập ngân hàng 500 câu hỏi trắc nghiệm Toán theo chuẩn ma trận đề của Bộ Giáo dục.",
-        fieldCode: "IV",
-        critId: "TC402",
-        status: EvidenceStatus.NEEDS_SUPPLEMENT,
-        fileName: "NganHangCauHoi_Toan_SoHoa.pdf",
-        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-007/Field_IV/NganHangCauHoi_Toan.pdf",
-        reviewComment: "Cần bổ sung thêm bảng phân loại cấp độ nhận thức (Nhận biết, Thông hiểu, Vận dụng) cho các câu hỏi phần Hình học.",
-        comments: [
-          {
-            userId: "USR-035",
-            userName: "Lâm Văn Hùng",
-            userRole: "VICE_PRINCIPAL",
-            content: "Cô Yến bổ sung thêm file ma trận chi tiết các phân môn trước ngày 20 nhé.",
-            createdAt: new Date(Date.now() - 3600000 * 12)
-          }
-        ]
-      },
-      {
-        userEmail: "chauvuonganhhung@gmail.com", // USR-012: Châu Vương Anh Hùng - Tổ trưởng Tổ Ngoại Ngữ
-        evidenceId: "MC-2026-USR-012-001",
-        title: "Phòng học trực tuyến luyện kỹ năng Nói tiếng Anh tương tác qua MS Teams",
-        description: "Mô hình câu lạc bộ tiếng Anh online và phòng luyện phát âm AI với sự tham gia của 120 học sinh.",
-        fieldCode: "I",
-        critId: "TC104",
-        status: EvidenceStatus.APPROVED,
-        fileName: "PhongHocOnline_EnglishSpeaking.pdf",
-        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-012/Field_I/PhongHocOnline_EnglishSpeaking.pdf",
-        reviewComment: "Tổ chức hoạt động ngoại khóa tiếng Anh online rất sinh động và hiệu quả.",
-      },
-      {
-        userEmail: "chauvuonganhhung@gmail.com",
-        evidenceId: "MC-2026-USR-012-002",
-        title: "Kho học liệu số tương tác và bài tập ngữ pháp Tiếng Anh 12",
-        description: "Bộ học liệu số Canva & Quizizz ôn thi tốt nghiệp THPT môn Tiếng Anh.",
-        fieldCode: "II",
-        critId: "TC204",
-        status: EvidenceStatus.PENDING,
-        fileName: "HocLieuSo_TiengAnh12_Canva.pdf",
-        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-012/Field_II/HocLieuSo_TiengAnh12.pdf",
-      },
-      {
-        userEmail: "nhathanlamda10vdt@gmail.com", // USR-013: Lâm Thanh Nhã - Tổ phó Tổ Ngoại Ngữ
-        evidenceId: "MC-2026-USR-013-001",
-        title: "Bộ học liệu số và bảng từ vựng ngữ âm tiếng Khmer điện tử",
-        description: "Học liệu đa phương tiện hỗ trợ học sinh học chữ và tiếng Khmer trên nền tảng kỹ thuật số.",
-        fieldCode: "II",
-        critId: "TC202",
-        status: EvidenceStatus.APPROVED,
-        fileName: "TuDienNguAm_TiengKhmer_SoHoa.pdf",
-        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-013/Field_II/TuDienNguAm_TiengKhmer.pdf",
-      },
-      {
-        userEmail: "nhathanlamda10vdt@gmail.com",
-        evidenceId: "MC-2026-USR-013-002",
-        title: "Đổi mới phương pháp dạy học song ngữ trên môi trường số",
-        description: "Sáng kiến nâng cao hứng thú học tập chữ viết Khmer thông qua phần mềm tương tác.",
-        fieldCode: "VIII",
-        critId: "TC801",
-        status: EvidenceStatus.PENDING,
-        fileName: "SangKien_DayHocSongNgu_SoHoa.pdf",
-        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-013/Field_VIII/SangKien_DayHocSongNgu.pdf",
-      },
-      {
-        userEmail: "duquockiet@gmail.com", // Fallback or Tổ Xã Hội
-        evidenceId: "MC-2026-USR-023-001",
-        title: "Bảo tàng số Lịch sử địa phương và tư liệu tương tác 3D",
-        description: "Số hóa tư liệu lịch sử di tích văn hóa tỉnh Sóc Trăng phục vụ dạy học trải nghiệm môn Lịch sử.",
-        fieldCode: "II",
-        critId: "TC201",
-        status: EvidenceStatus.APPROVED,
-        fileName: "BaoTangSo_LichSuDiaPhuong.pdf",
-        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-023/Field_II/BaoTangSo_LichSu.pdf",
-        reviewComment: "Tư liệu bảo tàng 3D rất trực quan, gắn kết sâu sắc lịch sử địa phương.",
-      },
-      {
-        userEmail: "duquockiet@gmail.com",
-        evidenceId: "MC-2026-USR-024-001",
-        title: "Sử dụng nền tảng Padlet và Canva trong dạy học đọc hiểu văn bản Ngữ văn",
-        description: "Báo cáo chuyên đề đổi mới phương pháp dạy học Ngữ văn theo chương trình GDPT 2018 bằng công cụ số.",
-        fieldCode: "III",
-        critId: "TC305",
-        status: EvidenceStatus.PENDING,
-        fileName: "ChuyenDe_DayHocVan_Padlet.pdf",
-        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-024/Field_III/ChuyenDe_DayHocVan.pdf",
-      },
-      {
-        userEmail: "duquockiet@gmail.com",
-        evidenceId: "MC-2026-USR-030-001",
-        title: "Mô phỏng thí nghiệm Vật lý số tương tác PhET và GeoGebra",
-        description: "Bộ 25 thí nghiệm ảo mô phỏng các hiện tượng Quang học và Sóng điện từ cho học sinh thực hành.",
-        fieldCode: "II",
-        critId: "TC204",
-        status: EvidenceStatus.APPROVED,
-        fileName: "ThiNghiemAo_VatLy_PhET.pdf",
-        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-030/Field_II/ThiNghiemAo_VatLy.pdf",
-      },
-      {
-        userEmail: "duquockiet@gmail.com",
-        evidenceId: "MC-2026-USR-030-002",
-        title: "Chuyên đề ứng dụng AI phân tích kết quả học tập và chuẩn đoán điểm yếu học sinh môn Vật lý",
-        description: "Sử dụng công cụ AI phân tích phổ điểm các bài kiểm tra định kỳ để xây dựng kế hoạch bồi dưỡng học sinh.",
-        fieldCode: "V",
-        critId: "TC504",
-        status: EvidenceStatus.PENDING,
-        fileName: "PhanTichDuLieuAI_HocTapVatLy.pdf",
-        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-030/Field_V/PhanTichDuLieuAI.pdf",
-      }
-    ];
-
-    for (const item of leaderEvidenceTemplates) {
-      // Find user
-      let targetUser = await User.findOne({ email: item.userEmail.toLowerCase() });
-      if (!targetUser) {
-        targetUser = leaderUsers[0];
-      }
-      if (!targetUser) continue;
-
-      // Check if evidenceId already exists
-      const existing = await Evidence.findOne({ evidenceId: item.evidenceId });
-      if (existing) continue;
-
-      // Find field
-      let targetField = await Field.findOne({ user: targetUser._id, fieldCode: item.fieldCode });
-      if (!targetField) {
-        targetField = await Field.findOne({ fieldCode: item.fieldCode });
-      }
-
-      let criterionId = null;
-      if (targetField && targetField.criteria) {
-        const foundCrit = targetField.criteria.find((c: any) => c.criteriaId === item.critId);
-        if (foundCrit) {
-          criterionId = foundCrit._id;
-          if (item.status === EvidenceStatus.APPROVED) foundCrit.status = "approved";
-          else if (item.status === EvidenceStatus.PENDING) foundCrit.status = "pending";
-          else if (item.status === EvidenceStatus.NEEDS_SUPPLEMENT) foundCrit.status = "rejected";
-          await targetField.save();
-        }
-      }
-
-      const attachments = [
-        {
-          name: item.fileName,
-          url: item.fileUrl,
-          format: "application/pdf",
-          size: 2450000,
-        }
-      ];
-
-      const newEv = await Evidence.create({
-        evidenceId: item.evidenceId,
-        title: item.title,
-        description: item.description,
-        date: new Date(),
-        originalFileName: item.fileName,
-        fileFormat: "application/pdf",
-        fileSize: 2450000,
-        urlFile: item.fileUrl,
-        attachments: attachments,
-        currentStatus: item.status,
-        submittedBy: targetUser._id,
-        fieldId: targetField?._id,
-        criterionId: criterionId,
-        reviewComment: item.reviewComment || "",
-        comments: item.comments || []
-      });
-
-      if (!targetUser.evidences) targetUser.evidences = [];
-      targetUser.evidences.push(newEv._id as Types.ObjectId);
-      await targetUser.save();
-    }
-  } catch (err) {
-    console.error("Lỗi khi seed minh chứng mẫu cho Tổ trưởng/Tổ phó:", err);
-  }
-}
-
-/**
  * GET /api/evidences/leaders
  * Lấy danh sách minh chứng sư phạm của Tổ trưởng & Tổ phó dành cho Ban Giám Hiệu phê duyệt, hỗ trợ tìm kiếm, lọc và phân trang (mặc định 10 items/trang)
  */
@@ -767,9 +491,6 @@ router.get("/leaders", authenticateToken, async (req: AuthRequest, res: Response
     const departmentFilter = (req.query.department as string || "all").trim();
     const statusFilter = (req.query.status as string || "all").trim();
     const roleFilter = (req.query.role as string || "all").trim();
-
-    // Ensure leader evidences exist in DB
-    await ensureLeaderEvidencesInDb();
 
     let allLeaderEvidences: any[] = [];
 
@@ -1393,6 +1114,32 @@ router.patch("/:id/status", authenticateToken, authorizeRoles(UserRole.DEPARTMEN
     }
 
     if (dbEvidence) {
+      const reviewer = req.user!;
+      const submitter: any = dbEvidence.submittedBy;
+
+      if (submitter) {
+        const isSelf =
+          submitter.userId === reviewer.userId ||
+          (submitter.email && reviewer.email && submitter.email.toLowerCase() === reviewer.email.toLowerCase());
+
+        if (isSelf) {
+          return res.status(403).json({
+            success: false,
+            message: "Bạn không thể tự phê duyệt hoặc yêu cầu bổ sung cho chính minh chứng của mình!",
+          });
+        }
+
+        const seniorRoles = [UserRole.PRINCIPAL, UserRole.VICE_PRINCIPAL, UserRole.SCHOOL_BOARD];
+        const departmentLeadRoles = [UserRole.DEPARTMENT_HEAD, UserRole.DEPARTMENT_VICE_HEAD];
+
+        if (departmentLeadRoles.includes(submitter.role) && !seniorRoles.includes(reviewer.role)) {
+          return res.status(403).json({
+            success: false,
+            message: "Minh chứng của Tổ trưởng/Tổ phó chỉ có Hiệu trưởng hoặc Hiệu phó mới được phê duyệt!",
+          });
+        }
+      }
+
       dbEvidence.currentStatus = status;
       dbEvidence.reviewComment = reviewComment || "";
       await dbEvidence.save();

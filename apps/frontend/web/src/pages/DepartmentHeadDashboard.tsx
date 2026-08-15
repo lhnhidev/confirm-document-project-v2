@@ -1315,6 +1315,11 @@ export default function DepartmentHeadDashboard({
               return rawFormat.replace(/^\./, "")
             }
 
+            const isOwnEvidence = !!selectedEvidence.submittedBy && (
+              selectedEvidence.submittedBy.userId === currentUser.userId ||
+              normalize(selectedEvidence.submittedBy.email) === normalize(currentUser.email)
+            );
+
             const ext = activeAttachment ? getExtension(activeAttachment.name, activeAttachment.format) : "";
             const isUrl = activeAttachment ? (activeAttachment.format?.toLowerCase() === "url" || activeAttachment.format?.toLowerCase() === "link" || activeAttachment.url?.startsWith("http") && !activeAttachment.url?.includes("simulated") && !activeAttachment.url?.includes("r2.dev") && !activeAttachment.url?.includes("example.com")) : false;
 
@@ -1439,41 +1444,52 @@ export default function DepartmentHeadDashboard({
                         </div>
                       </div>
 
-                      <div className="space-y-3 pt-2 border-t border-slate-100 shrink-0">
-                        <Textarea
-                          label={`Nhận xét & Đánh giá của ${roleTitle}`}
-                          placeholder="Nhập nội dung nhận xét hoặc chỉ dẫn nếu yêu cầu bổ sung..."
-                          rows={2}
-                          value={reviewComment}
-                          onChange={(e) => setReviewComment(e.currentTarget.value)}
-                        />
+                      {isOwnEvidence ? (
+                        <Alert
+                          color="blue"
+                          variant="light"
+                          icon={<IconAlertTriangle size={16} />}
+                          className="shrink-0"
+                        >
+                          Đây là minh chứng của chính bạn. Chỉ Hiệu trưởng hoặc Hiệu phó mới có thể phê duyệt hoặc yêu cầu bổ sung minh chứng này.
+                        </Alert>
+                      ) : (
+                        <div className="space-y-3 pt-2 border-t border-slate-100 shrink-0">
+                          <Textarea
+                            label={`Nhận xét & Đánh giá của ${roleTitle}`}
+                            placeholder="Nhập nội dung nhận xét hoặc chỉ dẫn nếu yêu cầu bổ sung..."
+                            rows={2}
+                            value={reviewComment}
+                            onChange={(e) => setReviewComment(e.currentTarget.value)}
+                          />
 
-                        <div className="flex justify-end space-x-2">
-                          <Button
-                            color="red"
-                            variant="light"
-                            size="xs"
-                            leftSection={<IconAlertTriangle size={14} />}
-                            loading={isSubmittingReview}
-                            onClick={() => {
-                              handleRequestSupplement(selectedEvidence)
-                            }}
-                          >
-                            Yêu Cầu Bổ Sung
-                          </Button>
-                          <Button
-                            color="emerald"
-                            size="xs"
-                            leftSection={<IconCheck size={14} />}
-                            loading={isSubmittingReview}
-                            onClick={() => {
-                              handleApprove(selectedEvidence)
-                            }}
-                          >
-                            Phê Duyệt
-                          </Button>
+                          <div className="flex justify-end space-x-2">
+                            <Button
+                              color="red"
+                              variant="light"
+                              size="xs"
+                              leftSection={<IconAlertTriangle size={14} />}
+                              loading={isSubmittingReview}
+                              onClick={() => {
+                                handleRequestSupplement(selectedEvidence)
+                              }}
+                            >
+                              Yêu Cầu Bổ Sung
+                            </Button>
+                            <Button
+                              color="emerald"
+                              size="xs"
+                              leftSection={<IconCheck size={14} />}
+                              loading={isSubmittingReview}
+                              onClick={() => {
+                                handleApprove(selectedEvidence)
+                              }}
+                            >
+                              Phê Duyệt
+                            </Button>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </Tabs.Panel>
 
                     <Tabs.Panel value="chat" className="flex flex-col justify-between flex-1 h-full overflow-hidden">

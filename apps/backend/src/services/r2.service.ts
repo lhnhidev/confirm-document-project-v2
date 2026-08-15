@@ -1,4 +1,9 @@
 import { S3Client, ListObjectsV2Command, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { mkdir, writeFile, unlink } from "fs/promises";
+import path from "path";
+
+const UPLOADS_DIR = path.resolve(process.cwd(), "uploads");
+const BACKEND_PUBLIC_URL = process.env.BACKEND_PUBLIC_URL || `http://localhost:${process.env.BACKEND_PORT || 5000}`;
 
 let s3Client: S3Client | null = null;
 
@@ -125,12 +130,19 @@ export async function uploadFilesToR2(
         }
       }
     } else {
-      // Simulation mode when R2 credentials are not yet set
-      console.log(`[Cloudflare R2 Simulation] Target Folder: ${folderPath}, File: ${file.originalname}`);
-      const simUrl = `https://r2.storage.simulated/${objectKey}`;
-      fileUrl = simUrl;
-      if (primaryUrl === "#") {
-        primaryUrl = simUrl;
+      // Local disk fallback when Cloudflare R2 credentials are not yet set
+      try {
+        const destPath = path.join(UPLOADS_DIR, objectKey);
+        await mkdir(path.dirname(destPath), { recursive: true });
+        await writeFile(destPath, file.buffer);
+
+        const localUrl = `${BACKEND_PUBLIC_URL}/uploads/${objectKey}`;
+        fileUrl = localUrl;
+        if (primaryUrl === "#") {
+          primaryUrl = localUrl;
+        }
+      } catch (err) {
+        console.error("❌ Local Upload Fallback Error:", err);
       }
     }
 
@@ -160,7 +172,14 @@ export async function deleteFileFromR2(urlFile?: string): Promise<boolean> {
   const bucketName = process.env.R2_BUCKET_NAME || process.env.CLOUDFLARE_R2_BUCKET_NAME || "confirm-documents";
 
   if (!client) {
-    console.log(`[Cloudflare R2 Simulation] Delete file simulated for URL: ${urlFile}`);
+    if (urlFile.startsWith(BACKEND_PUBLIC_URL)) {
+      try {
+        const objectKey = urlFile.slice(`${BACKEND_PUBLIC_URL}/uploads/`.length);
+        await unlink(path.join(UPLOADS_DIR, objectKey));
+      } catch {
+        // File already missing, ignore
+      }
+    }
     return true;
   }
 

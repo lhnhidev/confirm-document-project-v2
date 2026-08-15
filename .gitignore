@@ -20,6 +20,9 @@ node_modules/
 *.key
 *.cert
 
+# Local evidence file storage fallback (used when Cloudflare R2 is not configured)
+apps/backend/uploads/
+
 # ==========================================
 # 3. BUILD OUTPUTS (Thư mục Build của Web & Backend)
 # ==========================================
