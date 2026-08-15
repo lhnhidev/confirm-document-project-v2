@@ -190,8 +190,8 @@ export default function UserContactsTab() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {paginatedUsers.map((user) => (
-                  <Table.Tr key={user.userId}>
+                {paginatedUsers.map((user, idx) => (
+                  <Table.Tr key={user.userId || (user as any).id || user.email || `contact-${idx}`}>
                     <Table.Td>
                       <Group gap="sm">
                         <Avatar 

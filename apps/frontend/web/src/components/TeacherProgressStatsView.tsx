@@ -97,7 +97,7 @@ export default function TeacherProgressStatsView() {
 
               <Table.Tbody>
                 {statsData.teacherProgress.map((teacher, idx) => (
-                  <Table.Tr key={idx}>
+                  <Table.Tr key={teacher.userId || teacher.email || `tp-${idx}`}>
                     <Table.Td>
                       <Group gap="sm">
                         <Avatar color="blue" radius="xl" size="sm">

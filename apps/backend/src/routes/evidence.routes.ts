@@ -8,6 +8,7 @@ import { User, UserRole } from "../models/user.model.ts";
 import { Field } from "../models/field.model.ts";
 import { authenticateToken, authorizeRoles, type AuthRequest } from "../middleware/auth.middleware.ts";
 import { FALLBACK_FIELDS } from "../db/seedFieldsData.ts";
+import { FALLBACK_USERS } from "../db/seedUsersData.ts";
 import { uploadFilesToR2, deleteFileFromR2 } from "../services/r2.service.ts";
 const uploadMultipleFilesToR2 = uploadFilesToR2;
 
@@ -110,8 +111,10 @@ const formatEvidenceItem = (e: any, fallbackUser?: any) => {
     ? e.comments.map((comment: any) => ({
         id: comment._id ? comment._id.toString() : (comment.id || undefined),
         userId: comment.userId,
-        userName: comment.userName,
-        userRole: comment.userRole,
+        userName: comment.userName || comment.fullName || "Người dùng",
+        fullName: comment.fullName || comment.userName || "Người dùng",
+        userRole: comment.userRole || comment.role || "Teacher",
+        role: comment.role || comment.userRole || "Teacher",
         content: comment.content,
         createdAt: comment.createdAt ? new Date(comment.createdAt).toISOString() : new Date().toISOString()
       }))
@@ -222,7 +225,7 @@ router.get("/my-summary", authenticateToken, async (req: AuthRequest, res: Respo
       // Tìm tất cả Evidence của dbUser từ MongoDB Atlas, sắp xếp mới nhất lên đầu
       const dbEvidences = await Evidence.find({ submittedBy: dbUser._id })
         .sort({ date: -1, createdAt: -1 })
-        .populate("submittedBy", "userId fullName email departmentName")
+        .populate("submittedBy", "userId fullName email departmentName role major")
         .populate("fieldId", "fieldName fieldCode criteria");
 
       allTeacherEvidences = dbEvidences.map((e: any) => formatEvidenceItem(e, dbUser));
@@ -370,7 +373,7 @@ router.get("/my-evidences", authenticateToken, async (req: AuthRequest, res: Res
       if (dbUser) {
         const dbEvidences = await Evidence.find({ submittedBy: dbUser._id })
           .sort({ date: -1, createdAt: -1 })
-          .populate("submittedBy", "userId fullName email departmentName")
+          .populate("submittedBy", "userId fullName email departmentName role major")
           .populate("fieldId", "fieldName fieldCode criteria");
 
         allTeacherEvidences = dbEvidences.map((e: any) => formatEvidenceItem(e, dbUser));
@@ -441,7 +444,9 @@ router.get("/my-supplement-count", authenticateToken, async (req: AuthRequest, r
       });
 
       if (dbUser) {
-        const dbEvidences = await Evidence.find({ submittedBy: dbUser._id });
+        const dbEvidences = await Evidence.find({ submittedBy: dbUser._id })
+          .populate("submittedBy", "userId fullName email departmentName role major")
+          .populate("fieldId", "fieldName fieldCode criteria");
         allTeacherEvidences = dbEvidences.map((e: any) => formatEvidenceItem(e, dbUser));
       }
     } catch {
@@ -475,6 +480,406 @@ router.get("/my-supplement-count", authenticateToken, async (req: AuthRequest, r
 });
 
 /**
+ * Helper function to seed sample leader evidences if none exist in MongoDB Atlas
+ */
+async function ensureLeaderEvidencesInDb() {
+  try {
+    const leaderUsers = await User.find({
+      role: { $in: [UserRole.DEPARTMENT_HEAD, UserRole.DEPARTMENT_VICE_HEAD] }
+    });
+
+    if (!leaderUsers || leaderUsers.length === 0) return;
+
+    // Check if any leader already has evidence
+    const existingLeaderEvidences = await Evidence.find({
+      submittedBy: { $in: leaderUsers.map(u => u._id) }
+    });
+
+    if (existingLeaderEvidences && existingLeaderEvidences.length >= 8) {
+      return; // Already has enough leader evidences
+    }
+
+    const leaderEvidenceTemplates = [
+      {
+        userEmail: "phuoc.ipebl@gmail.com", // USR-002: Lê Phú Quốc - Tổ trưởng Tổ Tổng Hợp
+        evidenceId: "MC-2026-USR-002-001",
+        title: "Kế hoạch ứng dụng CNTT và Chuyển đổi số Tổ Tổng Hợp năm học 2025-2026",
+        description: "Xây dựng định hướng số hóa kho tài nguyên giảng dạy, triển khai sổ điểm điện tử và LMS cho toàn bộ giáo viên tổ Tổng Hợp.",
+        fieldCode: "I",
+        critId: "TC101",
+        status: EvidenceStatus.PENDING,
+        fileName: "KeHoach_ChuyenDoiSo_ToTongHop_2025_2026.pdf",
+        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-002/Field_I/KeHoach_ChuyenDoiSo_ToTongHop.pdf",
+        comments: [
+          {
+            userId: "USR-002",
+            userName: "Lê Phú Quốc",
+            userRole: "DEPARTMENT_HEAD",
+            content: "Kính gửi Ban Giám Hiệu xem xét và phê duyệt kế hoạch chuyển đổi số của Tổ Tổng Hợp năm học 2025-2026.",
+            createdAt: new Date(Date.now() - 3600000 * 48)
+          }
+        ]
+      },
+      {
+        userEmail: "phuoc.ipebl@gmail.com",
+        evidenceId: "MC-2026-USR-002-002",
+        title: "Ngân hàng học liệu số và giáo án tương tác môn Công nghệ",
+        description: "Tổng hợp 45 bài giảng điện tử tương tác và kho video hướng dẫn thực hành ứng dụng công nghệ số.",
+        fieldCode: "II",
+        critId: "TC205",
+        status: EvidenceStatus.APPROVED,
+        fileName: "NganHangHocLieuSo_CongNghe_2026.pdf",
+        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-002/Field_II/NganHangHocLieuSo_CongNghe.pdf",
+        reviewComment: "Tổ trưởng chuẩn bị học liệu số rất công phu và đầy đủ, đạt chuẩn xuất sắc.",
+        comments: [
+          {
+            userId: "USR-037",
+            userName: "Dư Quốc Kiệt",
+            userRole: "PRINCIPAL",
+            content: "Học liệu số chất lượng cao, khuyến khích nhân rộng mô hình cho các tổ khác.",
+            createdAt: new Date(Date.now() - 3600000 * 24)
+          }
+        ]
+      },
+      {
+        userEmail: "danhsung1991@gmail.com", // USR-004: Danh Sung - Tổ phó Tổ Tổng Hợp
+        evidenceId: "MC-2026-USR-004-001",
+        title: "Video học liệu số kỹ thuật bài tập thể dục và thể thao trường học",
+        description: "Bộ video hướng dẫn động tác kỹ thuật môn Thể dục được quay dựng và đăng tải trên kênh Youtube nội bộ của trường.",
+        fieldCode: "II",
+        critId: "TC203",
+        status: EvidenceStatus.APPROVED,
+        fileName: "VideoBaiGiang_TheDuc_2026.pdf",
+        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-004/Field_II/VideoBaiGiang_TheDuc.pdf",
+        reviewComment: "Đã kiểm duyệt các video kỹ thuật, hình ảnh và âm thanh rõ nét.",
+      },
+      {
+        userEmail: "danhsung1991@gmail.com",
+        evidenceId: "MC-2026-USR-004-002",
+        title: "Hệ thống quản lý và đánh giá thể lực học sinh bằng Google Sheets & AppSheet",
+        description: "Số hóa dữ liệu kiểm tra thể lực định kỳ của 850 học sinh toàn trường, tự động trích xuất báo cáo.",
+        fieldCode: "IV",
+        critId: "TC403",
+        status: EvidenceStatus.PENDING,
+        fileName: "QuanLyTheLucHocSinh_SoHoa.pdf",
+        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-004/Field_IV/QuanLyTheLucHocSinh_SoHoa.pdf",
+      },
+      {
+        userEmail: "thiyennguyen1981@gmail.com", // USR-007: Nguyễn Thị Yến - Tổ phó Tổ Tự Nhiên
+        evidenceId: "MC-2026-USR-007-001",
+        title: "Bộ bài giảng điện tử e-Learning môn Toán THPT trên LMS",
+        description: "Thiết kế hệ thống bài giảng tương tác và bài tập củng cố kiến thức môn Toán 10 và 11.",
+        fieldCode: "III",
+        critId: "TC301",
+        status: EvidenceStatus.APPROVED,
+        fileName: "BaiGiang_eLearning_ToanTHPT.pdf",
+        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-007/Field_III/BaiGiang_eLearning_Toan.pdf",
+        reviewComment: "Bài giảng e-Learning môn Toán thiết kế logic, tương tác tốt.",
+      },
+      {
+        userEmail: "thiyennguyen1981@gmail.com",
+        evidenceId: "MC-2026-USR-007-002",
+        title: "Xây dựng ma trận ma đề và ngân hàng đề thi trắc nghiệm Toán số hóa",
+        description: "Tạo lập ngân hàng 500 câu hỏi trắc nghiệm Toán theo chuẩn ma trận đề của Bộ Giáo dục.",
+        fieldCode: "IV",
+        critId: "TC402",
+        status: EvidenceStatus.NEEDS_SUPPLEMENT,
+        fileName: "NganHangCauHoi_Toan_SoHoa.pdf",
+        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-007/Field_IV/NganHangCauHoi_Toan.pdf",
+        reviewComment: "Cần bổ sung thêm bảng phân loại cấp độ nhận thức (Nhận biết, Thông hiểu, Vận dụng) cho các câu hỏi phần Hình học.",
+        comments: [
+          {
+            userId: "USR-035",
+            userName: "Lâm Văn Hùng",
+            userRole: "VICE_PRINCIPAL",
+            content: "Cô Yến bổ sung thêm file ma trận chi tiết các phân môn trước ngày 20 nhé.",
+            createdAt: new Date(Date.now() - 3600000 * 12)
+          }
+        ]
+      },
+      {
+        userEmail: "chauvuonganhhung@gmail.com", // USR-012: Châu Vương Anh Hùng - Tổ trưởng Tổ Ngoại Ngữ
+        evidenceId: "MC-2026-USR-012-001",
+        title: "Phòng học trực tuyến luyện kỹ năng Nói tiếng Anh tương tác qua MS Teams",
+        description: "Mô hình câu lạc bộ tiếng Anh online và phòng luyện phát âm AI với sự tham gia của 120 học sinh.",
+        fieldCode: "I",
+        critId: "TC104",
+        status: EvidenceStatus.APPROVED,
+        fileName: "PhongHocOnline_EnglishSpeaking.pdf",
+        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-012/Field_I/PhongHocOnline_EnglishSpeaking.pdf",
+        reviewComment: "Tổ chức hoạt động ngoại khóa tiếng Anh online rất sinh động và hiệu quả.",
+      },
+      {
+        userEmail: "chauvuonganhhung@gmail.com",
+        evidenceId: "MC-2026-USR-012-002",
+        title: "Kho học liệu số tương tác và bài tập ngữ pháp Tiếng Anh 12",
+        description: "Bộ học liệu số Canva & Quizizz ôn thi tốt nghiệp THPT môn Tiếng Anh.",
+        fieldCode: "II",
+        critId: "TC204",
+        status: EvidenceStatus.PENDING,
+        fileName: "HocLieuSo_TiengAnh12_Canva.pdf",
+        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-012/Field_II/HocLieuSo_TiengAnh12.pdf",
+      },
+      {
+        userEmail: "nhathanlamda10vdt@gmail.com", // USR-013: Lâm Thanh Nhã - Tổ phó Tổ Ngoại Ngữ
+        evidenceId: "MC-2026-USR-013-001",
+        title: "Bộ học liệu số và bảng từ vựng ngữ âm tiếng Khmer điện tử",
+        description: "Học liệu đa phương tiện hỗ trợ học sinh học chữ và tiếng Khmer trên nền tảng kỹ thuật số.",
+        fieldCode: "II",
+        critId: "TC202",
+        status: EvidenceStatus.APPROVED,
+        fileName: "TuDienNguAm_TiengKhmer_SoHoa.pdf",
+        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-013/Field_II/TuDienNguAm_TiengKhmer.pdf",
+      },
+      {
+        userEmail: "nhathanlamda10vdt@gmail.com",
+        evidenceId: "MC-2026-USR-013-002",
+        title: "Đổi mới phương pháp dạy học song ngữ trên môi trường số",
+        description: "Sáng kiến nâng cao hứng thú học tập chữ viết Khmer thông qua phần mềm tương tác.",
+        fieldCode: "VIII",
+        critId: "TC801",
+        status: EvidenceStatus.PENDING,
+        fileName: "SangKien_DayHocSongNgu_SoHoa.pdf",
+        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-013/Field_VIII/SangKien_DayHocSongNgu.pdf",
+      },
+      {
+        userEmail: "duquockiet@gmail.com", // Fallback or Tổ Xã Hội
+        evidenceId: "MC-2026-USR-023-001",
+        title: "Bảo tàng số Lịch sử địa phương và tư liệu tương tác 3D",
+        description: "Số hóa tư liệu lịch sử di tích văn hóa tỉnh Sóc Trăng phục vụ dạy học trải nghiệm môn Lịch sử.",
+        fieldCode: "II",
+        critId: "TC201",
+        status: EvidenceStatus.APPROVED,
+        fileName: "BaoTangSo_LichSuDiaPhuong.pdf",
+        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-023/Field_II/BaoTangSo_LichSu.pdf",
+        reviewComment: "Tư liệu bảo tàng 3D rất trực quan, gắn kết sâu sắc lịch sử địa phương.",
+      },
+      {
+        userEmail: "duquockiet@gmail.com",
+        evidenceId: "MC-2026-USR-024-001",
+        title: "Sử dụng nền tảng Padlet và Canva trong dạy học đọc hiểu văn bản Ngữ văn",
+        description: "Báo cáo chuyên đề đổi mới phương pháp dạy học Ngữ văn theo chương trình GDPT 2018 bằng công cụ số.",
+        fieldCode: "III",
+        critId: "TC305",
+        status: EvidenceStatus.PENDING,
+        fileName: "ChuyenDe_DayHocVan_Padlet.pdf",
+        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-024/Field_III/ChuyenDe_DayHocVan.pdf",
+      },
+      {
+        userEmail: "duquockiet@gmail.com",
+        evidenceId: "MC-2026-USR-030-001",
+        title: "Mô phỏng thí nghiệm Vật lý số tương tác PhET và GeoGebra",
+        description: "Bộ 25 thí nghiệm ảo mô phỏng các hiện tượng Quang học và Sóng điện từ cho học sinh thực hành.",
+        fieldCode: "II",
+        critId: "TC204",
+        status: EvidenceStatus.APPROVED,
+        fileName: "ThiNghiemAo_VatLy_PhET.pdf",
+        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-030/Field_II/ThiNghiemAo_VatLy.pdf",
+      },
+      {
+        userEmail: "duquockiet@gmail.com",
+        evidenceId: "MC-2026-USR-030-002",
+        title: "Chuyên đề ứng dụng AI phân tích kết quả học tập và chuẩn đoán điểm yếu học sinh môn Vật lý",
+        description: "Sử dụng công cụ AI phân tích phổ điểm các bài kiểm tra định kỳ để xây dựng kế hoạch bồi dưỡng học sinh.",
+        fieldCode: "V",
+        critId: "TC504",
+        status: EvidenceStatus.PENDING,
+        fileName: "PhanTichDuLieuAI_HocTapVatLy.pdf",
+        fileUrl: "https://pub-42861a7a0bdf42b08332ba19e48719f9.r2.dev/USR-030/Field_V/PhanTichDuLieuAI.pdf",
+      }
+    ];
+
+    for (const item of leaderEvidenceTemplates) {
+      // Find user
+      let targetUser = await User.findOne({ email: item.userEmail.toLowerCase() });
+      if (!targetUser) {
+        targetUser = leaderUsers[0];
+      }
+      if (!targetUser) continue;
+
+      // Check if evidenceId already exists
+      const existing = await Evidence.findOne({ evidenceId: item.evidenceId });
+      if (existing) continue;
+
+      // Find field
+      let targetField = await Field.findOne({ user: targetUser._id, fieldCode: item.fieldCode });
+      if (!targetField) {
+        targetField = await Field.findOne({ fieldCode: item.fieldCode });
+      }
+
+      let criterionId = null;
+      if (targetField && targetField.criteria) {
+        const foundCrit = targetField.criteria.find((c: any) => c.criteriaId === item.critId);
+        if (foundCrit) {
+          criterionId = foundCrit._id;
+          if (item.status === EvidenceStatus.APPROVED) foundCrit.status = "approved";
+          else if (item.status === EvidenceStatus.PENDING) foundCrit.status = "pending";
+          else if (item.status === EvidenceStatus.NEEDS_SUPPLEMENT) foundCrit.status = "rejected";
+          await targetField.save();
+        }
+      }
+
+      const attachments = [
+        {
+          name: item.fileName,
+          url: item.fileUrl,
+          format: "application/pdf",
+          size: 2450000,
+        }
+      ];
+
+      const newEv = await Evidence.create({
+        evidenceId: item.evidenceId,
+        title: item.title,
+        description: item.description,
+        date: new Date(),
+        originalFileName: item.fileName,
+        fileFormat: "application/pdf",
+        fileSize: 2450000,
+        urlFile: item.fileUrl,
+        attachments: attachments,
+        currentStatus: item.status,
+        submittedBy: targetUser._id,
+        fieldId: targetField?._id,
+        criterionId: criterionId,
+        reviewComment: item.reviewComment || "",
+        comments: item.comments || []
+      });
+
+      if (!targetUser.evidences) targetUser.evidences = [];
+      targetUser.evidences.push(newEv._id as Types.ObjectId);
+      await targetUser.save();
+    }
+  } catch (err) {
+    console.error("Lỗi khi seed minh chứng mẫu cho Tổ trưởng/Tổ phó:", err);
+  }
+}
+
+/**
+ * GET /api/evidences/leaders
+ * Lấy danh sách minh chứng sư phạm của Tổ trưởng & Tổ phó dành cho Ban Giám Hiệu phê duyệt, hỗ trợ tìm kiếm, lọc và phân trang (mặc định 10 items/trang)
+ */
+router.get("/leaders", authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const pageNum = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limitNum = Math.max(1, parseInt(req.query.limit as string) || 10);
+    const searchQuery = (req.query.search as string || "").trim().toLowerCase();
+    const departmentFilter = (req.query.department as string || "all").trim();
+    const statusFilter = (req.query.status as string || "all").trim();
+    const roleFilter = (req.query.role as string || "all").trim();
+
+    // Ensure leader evidences exist in DB
+    await ensureLeaderEvidencesInDb();
+
+    let allLeaderEvidences: any[] = [];
+
+    try {
+      // Find all users who are DEPARTMENT_HEAD or DEPARTMENT_VICE_HEAD
+      const leaderUsers = await User.find({
+        role: { $in: [UserRole.DEPARTMENT_HEAD, UserRole.DEPARTMENT_VICE_HEAD] }
+      });
+
+      const leaderUserIds = leaderUsers.map((u) => u._id);
+
+      const dbEvidences = await Evidence.find({
+        submittedBy: { $in: leaderUserIds }
+      })
+        .sort({ date: -1, createdAt: -1 })
+        .populate("submittedBy", "userId fullName email departmentName role major")
+        .populate("fieldId", "fieldName fieldCode criteria");
+
+      if (dbEvidences && dbEvidences.length > 0) {
+        allLeaderEvidences = dbEvidences.map((e: any) => formatEvidenceItem(e));
+      }
+    } catch (err) {
+      console.error("Lỗi khi truy vấn minh chứng Tổ trưởng/Tổ phó từ Atlas:", err);
+      allLeaderEvidences = [];
+    }
+
+    // Fallback if empty
+    if (allLeaderEvidences.length === 0) {
+      allLeaderEvidences = inMemoryEvidences.filter(
+        (e) =>
+          e.submittedBy?.role === UserRole.DEPARTMENT_HEAD ||
+          e.submittedBy?.role === UserRole.DEPARTMENT_VICE_HEAD ||
+          e.submittedBy?.role === "DEPARTMENT_HEAD" ||
+          e.submittedBy?.role === "DEPARTMENT_VICE_HEAD"
+      );
+    }
+
+    // Calculate Summary Stats for Leader Evidences
+    const totalSubmitted = allLeaderEvidences.length;
+    const pendingCount = allLeaderEvidences.filter((e) => e.currentStatus === EvidenceStatus.PENDING).length;
+    const approvedCount = allLeaderEvidences.filter((e) => e.currentStatus === EvidenceStatus.APPROVED).length;
+    const needsSupplementCount = allLeaderEvidences.filter((e) => e.currentStatus === EvidenceStatus.NEEDS_SUPPLEMENT).length;
+    
+    // Unique leader contributors
+    const leaderSet = new Set<string>();
+    allLeaderEvidences.forEach((e) => {
+      if (e.submittedBy?.userId) leaderSet.add(e.submittedBy.userId);
+    });
+    const totalLeaders = leaderSet.size;
+
+    // Filter by search, department, status, and role
+    const filteredEvidences = allLeaderEvidences.filter((item) => {
+      const matchesSearch =
+        !searchQuery ||
+        item.title.toLowerCase().includes(searchQuery) ||
+        item.evidenceId.toLowerCase().includes(searchQuery) ||
+        item.submittedBy.fullName.toLowerCase().includes(searchQuery) ||
+        item.submittedBy.email.toLowerCase().includes(searchQuery) ||
+        item.submittedBy.departmentName.toLowerCase().includes(searchQuery) ||
+        item.standardName.toLowerCase().includes(searchQuery) ||
+        item.criteriaName.toLowerCase().includes(searchQuery);
+
+      const matchesDept =
+        departmentFilter === "all" ||
+        item.submittedBy.departmentName === departmentFilter ||
+        item.submittedBy.departmentName.toLowerCase() === departmentFilter.toLowerCase();
+
+      const matchesStatus =
+        statusFilter === "all" ||
+        item.currentStatus === statusFilter;
+
+      const matchesRole =
+        roleFilter === "all" ||
+        item.submittedBy.role === roleFilter;
+
+      return matchesSearch && matchesDept && matchesStatus && matchesRole;
+    });
+
+    // Pagination
+    const totalFiltered = filteredEvidences.length;
+    const totalPages = Math.ceil(totalFiltered / limitNum) || 1;
+    const paginatedEvidences = filteredEvidences.slice((pageNum - 1) * limitNum, pageNum * limitNum);
+
+    return res.status(200).json({
+      success: true,
+      summary: {
+        totalSubmitted,
+        pendingCount,
+        approvedCount,
+        needsSupplementCount,
+        totalLeaders,
+      },
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: totalFiltered,
+        totalPages,
+      },
+      evidences: paginatedEvidences,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi hệ thống khi lấy danh sách minh chứng của Tổ trưởng & Tổ phó!",
+      error: error.message,
+    });
+  }
+});
+
+/**
  * GET /api/evidences
  * Lấy danh sách minh chứng sư phạm
  */
@@ -483,7 +888,8 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response) => {
     let formattedEvidences: any[] = [];
     try {
       const dbEvidences = await Evidence.find()
-        .populate("submittedBy", "userId fullName email departmentName")
+        .sort({ date: -1, createdAt: -1 })
+        .populate("submittedBy", "userId fullName email departmentName role major")
         .populate("fieldId", "fieldName fieldCode criteria");
 
       if (dbEvidences && dbEvidences.length > 0) {
@@ -508,14 +914,14 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response) => {
 
 /**
  * GET /api/evidences/stats
- * API phía Backend tổng hợp tất cả cán bộ/giáo viên trong hệ thống từ Atlas DB
+ * API phía Backend tổng hợp tất cả cán bộ/giáo viên và tiến độ thẩm định chính xác theo từng Tổ Chuyên Môn từ Atlas DB
  */
 router.get("/stats", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     let allEvidences: any[] = [];
     try {
       const dbEvidences = await Evidence.find()
-        .populate("submittedBy", "userId fullName email departmentName")
+        .populate("submittedBy", "userId fullName email departmentName role major")
         .populate("fieldId", "fieldName fieldCode criteria");
 
       if (dbEvidences && dbEvidences.length > 0) {
@@ -529,59 +935,195 @@ router.get("/stats", authenticateToken, async (req: AuthRequest, res: Response) 
       allEvidences = inMemoryEvidences;
     }
 
+    // Lấy danh sách toàn bộ người dùng trong DB (hoặc fallback)
+    let allUsers: any[] = [];
+    try {
+      allUsers = await User.find();
+    } catch {
+      allUsers = [];
+    }
+    if (!allUsers || allUsers.length === 0) {
+      allUsers = FALLBACK_USERS as any;
+    }
+
     const totalSubmitted = allEvidences.length;
     const totalApproved = allEvidences.filter((e) => e.currentStatus === EvidenceStatus.APPROVED).length;
     const totalPending = allEvidences.filter((e) => e.currentStatus === EvidenceStatus.PENDING).length;
     const totalNeedsSupplement = allEvidences.filter((e) => e.currentStatus === EvidenceStatus.NEEDS_SUPPLEMENT).length;
 
-    // Lấy tất cả giáo viên trong DB để tạo bảng tiến độ
-    const teachers = await User.find({ role: UserRole.TEACHER });
-    const teacherProgressList = [];
+    // Danh sách cán bộ/giáo viên (loại trừ Ban Giám Hiệu nếu cần)
+    const teachersAndStaff = allUsers.filter(
+      (u) => u.role !== UserRole.PRINCIPAL && u.role !== UserRole.VICE_PRINCIPAL && u.role !== UserRole.SCHOOL_BOARD
+    );
 
-    for (const t of teachers) {
+    // 1. Tính toán tiến độ từng giáo viên (teacherProgress)
+    const teacherProgressList = [];
+    for (const t of teachersAndStaff) {
       const tEvidences = allEvidences.filter((e) => {
-        if (e.submittedBy?._id) return e.submittedBy._id.toString() === t._id.toString();
-        if (e.submittedBy?.email) return e.submittedBy.email.toLowerCase() === t.email.toLowerCase();
+        if (e.submittedBy?._id && t._id && e.submittedBy._id.toString() === t._id.toString()) return true;
+        if (e.submittedBy?.email && t.email && e.submittedBy.email.toLowerCase() === t.email.toLowerCase()) return true;
+        if (e.submittedBy?.userId && t.userId && e.submittedBy.userId === t.userId) return true;
         return false;
       });
 
-      const userFields = await Field.find({ user: t._id });
       let approvedCritCount = 0;
       let totalCritCount = TOTAL_CRITERIA_COUNT;
 
-      if (userFields && userFields.length > 0) {
-        let sumTotal = 0;
-        let sumApproved = 0;
-        userFields.forEach((f) => {
-          if (f.criteria) {
-            sumTotal += f.criteria.length;
-            sumApproved += f.criteria.filter((c: any) => c.status === "approved").length;
+      try {
+        if (t._id) {
+          const userFields = await Field.find({ user: t._id });
+          if (userFields && userFields.length > 0) {
+            let sumTotal = 0;
+            let sumApproved = 0;
+            userFields.forEach((f) => {
+              if (f.criteria) {
+                sumTotal += f.criteria.length;
+                sumApproved += f.criteria.filter((c: any) => c.status === "approved").length;
+              }
+            });
+            if (sumTotal > 0) {
+              totalCritCount = sumTotal;
+              approvedCritCount = sumApproved;
+            }
           }
-        });
-        if (sumTotal > 0) {
-          totalCritCount = sumTotal;
-          approvedCritCount = sumApproved;
         }
+      } catch {
+        // ignore field fetch error
       }
 
-      const tApprovedCount = tEvidences.filter((e) => e.currentStatus === EvidenceStatus.APPROVED).length;
-      if (approvedCritCount === 0 && tApprovedCount > 0) {
-        approvedCritCount = tApprovedCount;
+      // Đếm số tiêu chí đã có minh chứng được duyệt nếu chưa có Field records
+      const tApprovedEvidences = tEvidences.filter((e) => e.currentStatus === EvidenceStatus.APPROVED);
+      const uniqueApprovedCriteria = new Set<string>();
+      tApprovedEvidences.forEach((e) => {
+        if (e.criteriaId) {
+          uniqueApprovedCriteria.add(e.criteriaId.toString());
+        } else if (e.fieldId) {
+          uniqueApprovedCriteria.add(e.fieldId.toString());
+        } else {
+          uniqueApprovedCriteria.add(e._id ? e._id.toString() : e.title);
+        }
+      });
+
+      if (approvedCritCount === 0 && uniqueApprovedCriteria.size > 0) {
+        approvedCritCount = uniqueApprovedCriteria.size;
       }
+
+      const completionPercentage = totalCritCount > 0
+        ? Math.min(100, Math.round((approvedCritCount / totalCritCount) * 100))
+        : (approvedCritCount > 0 ? 100 : 0);
 
       teacherProgressList.push({
+        userId: t.userId,
         fullName: t.fullName,
         email: t.email,
-        departmentName: t.departmentName || "Tổng hợp",
+        role: t.role,
+        major: t.major,
+        departmentName: t.departmentName || "Tổ Tổng Hợp",
         totalSubmitted: tEvidences.length,
-        approved: tApprovedCount,
+        approved: tApprovedEvidences.length,
         pending: tEvidences.filter((e) => e.currentStatus === EvidenceStatus.PENDING).length,
         needsSupplement: tEvidences.filter((e) => e.currentStatus === EvidenceStatus.NEEDS_SUPPLEMENT).length,
         completedCriteriaCount: approvedCritCount,
         totalCriteriaCount: totalCritCount,
-        completionPercentage: Math.round((approvedCritCount / totalCritCount) * 100),
+        completionPercentage,
       });
     }
+
+    // Helper chuẩn hóa tên tổ
+    const normalizeDeptName = (dept?: string) => {
+      if (!dept) return "Tổ Tổng Hợp";
+      const s = dept.trim().toLowerCase();
+      if (s.includes("tự nhiên") || s.includes("tu nhien")) return "Tổ Tự Nhiên";
+      if (s.includes("xã hội") || s.includes("xa hoi")) return "Tổ Xã Hội";
+      if (s.includes("ngoại ngữ") || s.includes("ngoai ngu")) return "Tổ Ngoại Ngữ";
+      if (s.includes("tổng hợp") || s.includes("tong hop")) return "Tổ Tổng Hợp";
+      return dept.trim();
+    };
+
+    // 2. Tính toán chính xác tiến độ theo từng Tổ Chuyên Môn (departmentProgress)
+    const standardDepts = ["Tổ Tự Nhiên", "Tổ Xã Hội", "Tổ Tổng Hợp", "Tổ Ngoại Ngữ"];
+    const presentDepts = new Set<string>(standardDepts);
+    allUsers.forEach((u) => {
+      if (u.departmentName && u.role !== UserRole.PRINCIPAL && u.role !== UserRole.VICE_PRINCIPAL && u.role !== UserRole.SCHOOL_BOARD) {
+        presentDepts.add(normalizeDeptName(u.departmentName));
+      }
+    });
+
+    const departmentProgressList = Array.from(presentDepts).map((deptName) => {
+      // Danh sách thành viên trong tổ
+      const deptMembers = allUsers.filter(
+        (u) => normalizeDeptName(u.departmentName) === deptName &&
+               u.role !== UserRole.PRINCIPAL &&
+               u.role !== UserRole.VICE_PRINCIPAL &&
+               u.role !== UserRole.SCHOOL_BOARD
+      );
+
+      // Tổ trưởng & Tổ phó
+      const headUser = deptMembers.find((u) => u.role === UserRole.DEPARTMENT_HEAD);
+      const viceHeadUser = deptMembers.find((u) => u.role === UserRole.DEPARTMENT_VICE_HEAD);
+
+      const headName = headUser?.fullName || (viceHeadUser ? `${viceHeadUser.fullName} (Quyền Tổ trưởng)` : "Chưa phân công");
+      const viceHeadName = viceHeadUser?.fullName || "";
+
+      // Minh chứng của tổ (do các thành viên trong tổ nộp)
+      const deptEvidences = allEvidences.filter((e) => {
+        const evDept = normalizeDeptName(e.submittedBy?.departmentName);
+        if (evDept === deptName) return true;
+        if (e.submittedBy?._id && deptMembers.some((m) => m._id && m._id.toString() === e.submittedBy._id.toString())) return true;
+        if (e.submittedBy?.email && deptMembers.some((m) => m.email.toLowerCase() === e.submittedBy.email.toLowerCase())) return true;
+        return false;
+      });
+
+      const approvedCount = deptEvidences.filter((e) => e.currentStatus === EvidenceStatus.APPROVED).length;
+      const pendingCount = deptEvidences.filter((e) => e.currentStatus === EvidenceStatus.PENDING).length;
+      const needsSupplementCount = deptEvidences.filter((e) => e.currentStatus === EvidenceStatus.NEEDS_SUPPLEMENT).length;
+      const deptTotalSubmitted = deptEvidences.length;
+
+      // Tiến độ tiêu chí của các giáo viên trong tổ
+      const deptTeacherStats = teacherProgressList.filter((t) => normalizeDeptName(t.departmentName) === deptName);
+      
+      let completionRate = 0;
+      if (deptTeacherStats.length > 0) {
+        const sumPercentage = deptTeacherStats.reduce((acc, t) => acc + t.completionPercentage, 0);
+        completionRate = Math.round(sumPercentage / deptTeacherStats.length);
+      } else if (deptTotalSubmitted > 0) {
+        completionRate = Math.round((approvedCount / deptTotalSubmitted) * 100);
+      }
+
+      return {
+        name: deptName,
+        headName,
+        viceHeadName,
+        teacherCount: deptMembers.length,
+        approvedCount,
+        pendingCount,
+        needsSupplementCount,
+        totalSubmitted: deptTotalSubmitted,
+        completionRate: Math.min(100, Math.max(0, completionRate)),
+      };
+    });
+
+    // Sắp xếp thứ tự tổ chuyên môn
+    const deptOrder = ["Tổ Tự Nhiên", "Tổ Xã Hội", "Tổ Tổng Hợp", "Tổ Ngoại Ngữ"];
+    departmentProgressList.sort((a, b) => {
+      const idxA = deptOrder.indexOf(a.name);
+      const idxB = deptOrder.indexOf(b.name);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    // 3. Tính toán số liệu tổng quan toàn trường (schoolOverview)
+    const leaderPendingCount = allEvidences.filter((e) => {
+      const role = e.submittedBy?.role;
+      const isLeader = role === UserRole.DEPARTMENT_HEAD || role === UserRole.DEPARTMENT_VICE_HEAD;
+      return isLeader && e.currentStatus === EvidenceStatus.PENDING;
+    }).length;
+
+    const overallCompletionRate = teacherProgressList.length > 0
+      ? Math.round(teacherProgressList.reduce((acc, t) => acc + t.completionPercentage, 0) / teacherProgressList.length)
+      : 0;
 
     return res.status(200).json({
       success: true,
@@ -591,7 +1133,11 @@ router.get("/stats", authenticateToken, async (req: AuthRequest, res: Response) 
         totalPending,
         totalNeedsSupplement,
         totalStandardCriteria: TOTAL_CRITERIA_COUNT,
+        totalTeachers: teachersAndStaff.length,
+        overallCompletionRate,
+        leaderPending: leaderPendingCount,
       },
+      departmentProgress: departmentProgressList,
       teacherProgress: teacherProgressList,
     });
   } catch (error: any) {

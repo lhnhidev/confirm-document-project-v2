@@ -439,6 +439,8 @@ export const FALLBACK_USERS: SeedUser[] = [
   }
 ];
 
+export const sampleUsers = FALLBACK_USERS;
+
 export async function syncSeedUsersToDatabase() {
   try {
     let userCount = await User.countDocuments();

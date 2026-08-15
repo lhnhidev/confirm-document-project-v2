@@ -22,11 +22,29 @@ export interface StatsSummary {
   totalPending: number
   totalNeedsSupplement: number
   totalStandardCriteria: number
+  totalTeachers?: number
+  overallCompletionRate?: number
+  leaderPending?: number
+}
+
+export interface DepartmentProgress {
+  name: string
+  headName: string
+  viceHeadName?: string
+  teacherCount: number
+  approvedCount: number
+  pendingCount: number
+  needsSupplementCount: number
+  totalSubmitted: number
+  completionRate: number
 }
 
 export interface TeacherProgress {
+  userId?: string
   fullName: string
   email: string
+  role?: string
+  major?: string
   departmentName: string
   totalSubmitted: number
   approved: number
@@ -40,6 +58,7 @@ export interface TeacherProgress {
 export interface StatsResponse {
   success: boolean
   summary: StatsSummary
+  departmentProgress?: DepartmentProgress[]
   teacherProgress: TeacherProgress[]
 }
 
@@ -398,3 +417,71 @@ export async function deleteCommentApi(
     return null
   }
 }
+
+export interface LeaderEvidencesSummary {
+  totalSubmitted: number
+  pendingCount: number
+  approvedCount: number
+  needsSupplementCount: number
+  totalLeaders: number
+}
+
+export interface LeaderEvidencesResponse {
+  success: boolean
+  summary: LeaderEvidencesSummary
+  pagination: PaginationInfo
+  evidences: EvidenceItem[]
+}
+
+/**
+ * Backend API Call: Lấy danh sách minh chứng sư phạm của Tổ trưởng & Tổ phó (phân trang backend 10 items/trang)
+ */
+export async function getLeaderEvidencesApi(params?: {
+  page?: number
+  limit?: number
+  search?: string
+  department?: string
+  status?: string
+  role?: string
+}): Promise<LeaderEvidencesResponse | null> {
+  const token = getToken()
+  try {
+    const queryParams = new URLSearchParams()
+    if (params?.page) {
+      queryParams.set("page", params.page.toString())
+    }
+    if (params?.limit) {
+      queryParams.set("limit", params.limit.toString())
+    }
+    if (params?.search) {
+      queryParams.set("search", params.search)
+    }
+    if (params?.department && params.department !== "all") {
+      queryParams.set("department", params.department)
+    }
+    if (params?.status && params.status !== "all" && params.status !== "ALL") {
+      queryParams.set("status", params.status)
+    }
+    if (params?.role && params.role !== "all") {
+      queryParams.set("role", params.role)
+    }
+
+    const url = `/api/evidences/leaders?${queryParams.toString()}`
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+
+    if (!response.ok) {
+      return null
+    }
+
+    const data = await response.json()
+    return data.success ? data : null
+  } catch (err) {
+    console.error("❌ Error fetching leader evidences from backend API:", err)
+    return null
+  }
+}
+
