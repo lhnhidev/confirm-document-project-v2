@@ -127,9 +127,9 @@ const formatEvidenceItem = (e: any, fallbackUser?: any) => {
     description: e.description || "",
     standardName,
     criteriaName,
-    originalFileName: e.originalFileName || (attachments.length > 0 ? attachments.map(a => a.name).join(", ") : ""),
+    originalFileName: e.originalFileName || (attachments.length > 0 ? attachments.map((a: any) => a.name).join(", ") : ""),
     fileFormat: e.fileFormat || (attachments.length > 0 ? attachments[0].format : ""),
-    fileSize: e.fileSize || (attachments.length > 0 ? attachments.reduce((acc, a) => acc + a.size, 0) : 0),
+    fileSize: e.fileSize || (attachments.length > 0 ? attachments.reduce((acc: number, a: any) => acc + a.size, 0) : 0),
     urlFile: e.urlFile ? ensureCorrectPublicUrl(e.urlFile) : (attachments.length > 0 ? ensureCorrectPublicUrl(attachments[0].url) : "#"),
     currentStatus: e.currentStatus,
     date: e.date ? new Date(e.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
@@ -678,7 +678,7 @@ router.get("/stats", authenticateToken, async (req: AuthRequest, res: Response) 
     );
 
     // 1. Tính toán tiến độ từng giáo viên (teacherProgress)
-    const teacherProgressList = [];
+    const teacherProgressList: any[] = [];
     for (const t of teachersAndStaff) {
       const tEvidences = allEvidences.filter((e) => {
         if (e.submittedBy?._id && t._id && e.submittedBy._id.toString() === t._id.toString()) return true;
